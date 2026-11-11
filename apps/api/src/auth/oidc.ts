@@ -9,6 +9,16 @@ export function callbackUrl(publicUrl: string): string {
   return new URL('/api/auth/callback', publicUrl).toString();
 }
 
+/**
+ * IdPから戻ってきたURL。リバースプロキシの後ろではリクエストのURLがhttpになり、
+ * 登録した戻り先と食い違ってトークンの交換が断られるので、公開URLにクエリだけを載せる。
+ */
+export function receivedCallbackUrl(publicUrl: string, requestUrl: URL): URL {
+  const received = new URL(callbackUrl(publicUrl));
+  received.search = requestUrl.search;
+  return received;
+}
+
 export function createOidcClient(config: ApplicationConfig['auth'], publicUrl: string) {
   let discovered: Promise<client.Configuration> | null = null;
   const configuration = () => {
@@ -38,8 +48,8 @@ export function createOidcClient(config: ApplicationConfig['auth'], publicUrl: s
       return { redirectUrl: url.toString(), attempt };
     },
 
-    async finish(currentUrl: URL, attempt: LoginAttempt): Promise<SessionUser> {
-      const tokens = await client.authorizationCodeGrant(await configuration(), currentUrl, {
+    async finish(requestUrl: URL, attempt: LoginAttempt): Promise<SessionUser> {
+      const tokens = await client.authorizationCodeGrant(await configuration(), receivedCallbackUrl(publicUrl, requestUrl), {
         pkceCodeVerifier: attempt.codeVerifier,
         expectedState: attempt.state,
         expectedNonce: attempt.nonce,
