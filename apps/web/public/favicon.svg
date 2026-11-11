@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <style>.base{stroke:#1f2933}.accent{stroke:#24a148}@media (prefers-color-scheme:dark){.base{stroke:#f4f4f4}}</style>
+  <ellipse class="base" cx="10" cy="5.5" rx="7" ry="2.75"/>
+  <path class="base" d="M3 5.5V17.5C3 19 6.1 20.25 10 20.25"/>
+  <path class="base" d="M17 5.5V10"/>
+  <path class="base" d="M3 11.5C3 13 6.1 14.25 10 14.25"/>
+  <circle class="accent" cx="16.5" cy="16" r="3.75"/>
+  <path class="accent" d="M19.25 18.75L22 21.5"/>
+</svg>

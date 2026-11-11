@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+artifacts/
+# 本番の表の対応は運用側の設定なので、公開のリポジトリに入れない。
+config/sources.yaml

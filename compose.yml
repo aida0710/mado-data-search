@@ -1,0 +1,15 @@
+# 開発用のClickHouse。127.0.0.1にだけ開く。本番の構成は deploy/compose.production.yml。
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.10.2
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
+    ports:
+      - "127.0.0.1:18123:8123"
+    volumes:
+      - ${MDS_DEV_CLICKHOUSE_DIRECTORY:-./artifacts/clickhouse-dev}:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144

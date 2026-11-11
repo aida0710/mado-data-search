@@ -1,0 +1,41 @@
+# どの表をどの項目として検索に載せるか。これを config/sources.yaml に写して運用の表に合わせる。
+# 式はSQLのまま書く。t が元の表、join で足した表は別名で参照する。
+sources:
+  - id: example-videos
+    service: example
+    kind: video
+    database: example
+    table: videos
+    key: id
+    mode: incremental
+    # 詳細の表があとから埋まる行を拾うため、前回の末尾からこの数だけ戻って読み直す。
+    rereadRecentKeys: 1000
+    join: LEFT JOIN channels c ON c.id = t.channel_id
+    fields:
+      externalId: t.platform_video_id
+      title: t.title
+      channelName: c.name
+      channelKey: c.platform_channel_id
+      language: t.language
+      durationSeconds: t.duration_seconds
+      publishedAt: t.published_at
+    urlTemplate: https://example.com/watch/{externalId}
+    # 詳細を開いたときにMySQLから読む列と、関連する行。
+    detail:
+      columns: [t.title, t.description, t.published_at]
+      related:
+        - label: アーカイブ
+          sql: SELECT member_name, size_bytes FROM example.archive_members WHERE video_id = ?
+
+  - id: example-items
+    service: example
+    kind: item
+    database: example
+    table: items
+    key: code
+    # キーが連番でない表は、新しい行を見分けられないので全件読み直す。
+    mode: full
+    fullEveryDays: 7
+    fields:
+      externalId: t.code
+      title: t.name
