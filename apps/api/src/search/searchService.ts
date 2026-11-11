@@ -1,6 +1,12 @@
 /** ClickHouseへの検索。ほかのサービスと同じVMで動かせるよう、1回の検索が使える資源に上限を付ける。 */
 import type { ClickHouseClient } from '@clickhouse/client';
-import type { OverviewResponse, SearchEntry, SearchRequest, SearchResponse } from '@mds/contracts';
+import type {
+  OverviewResponse,
+  SearchCountResponse,
+  SearchEntry,
+  SearchRequest,
+  SearchResponse,
+} from '@mds/contracts';
 import { sourceUrl, type SourceConfig } from '../sources/sourceConfig.js';
 import { buildSearchCondition } from './searchQuery.js';
 
@@ -11,7 +17,7 @@ const SEARCH_SETTINGS = {
   max_memory_usage: '2000000000',
   use_skip_indexes: 1,
 } as const;
-/** 件数は結果より長く待たない。間に合わなければ件数を出さずに結果だけ返す。 */
+/** 当たる行が多い語は数えきれないので、ここで打ち切って件数なしで返す。 */
 const COUNT_TIMEOUT_SECONDS = 5;
 const EPOCH_TEXT = '1970-01-01 00:00:00';
 
@@ -80,27 +86,28 @@ export function createSearchService(clickhouse: ClickHouseClient, sources: Sourc
     };
   }
 
-  async function countMatches(alternatives: string[], parameters: Record<string, unknown>): Promise<number | null> {
-    try {
-      const result = await clickhouse.query({
-        query: countQuery(alternatives),
-        format: 'JSONEachRow',
-        query_params: parameters,
-        clickhouse_settings: { ...SEARCH_SETTINGS, max_execution_time: COUNT_TIMEOUT_SECONDS },
-      });
-      const [row] = await result.json<{ matches: string | number }>();
-      return row ? Number(row.matches) : 0;
-    } catch {
-      // 件数は補助の情報なので、時間切れなら結果だけ返す。
-      return null;
-    }
-  }
-
   return {
+    async count(request: SearchRequest): Promise<SearchCountResponse> {
+      const { alternatives, parameters } = buildSearchCondition(request);
+      try {
+        const result = await clickhouse.query({
+          query: countQuery(alternatives),
+          format: 'JSONEachRow',
+          query_params: parameters,
+          clickhouse_settings: { ...SEARCH_SETTINGS, max_execution_time: COUNT_TIMEOUT_SECONDS },
+        });
+        const [row] = await result.json<{ matches: string | number }>();
+        return { total: row ? Number(row.matches) : 0 };
+      } catch {
+        // 件数は補助の情報なので、時間切れなら件数なしで返す。
+        return { total: null };
+      }
+    },
+
     async search(request: SearchRequest): Promise<SearchResponse> {
       const startedAt = Date.now();
       const { alternatives, parameters } = buildSearchCondition(request);
-      const entriesPromise = clickhouse.query({
+      const entriesResult = await clickhouse.query({
         query: entriesQuery(alternatives, request.sort),
         format: 'JSONEachRow',
         query_params: {
@@ -111,9 +118,8 @@ export function createSearchService(clickhouse: ClickHouseClient, sources: Sourc
         },
         clickhouse_settings: SEARCH_SETTINGS,
       });
-      const [entriesResult, total] = await Promise.all([entriesPromise, countMatches(alternatives, parameters)]);
       const rows = await entriesResult.json<EntryResultRow>();
-      return { entries: rows.map(toEntry), total, elapsedMilliseconds: Date.now() - startedAt };
+      return { entries: rows.map(toEntry), elapsedMilliseconds: Date.now() - startedAt };
     },
 
     async overview(): Promise<OverviewResponse> {

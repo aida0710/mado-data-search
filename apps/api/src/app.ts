@@ -31,9 +31,9 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
     await next();
   });
 
-  api.get('/search', async (context) => {
-    const url = new URL(context.req.url);
-    const parsed = SearchRequestSchema.safeParse({
+  const parseSearchRequest = (requestUrl: string) => {
+    const url = new URL(requestUrl);
+    return SearchRequestSchema.safeParse({
       query: url.searchParams.get('query') ?? undefined,
       field: url.searchParams.get('field') ?? undefined,
       services: url.searchParams.getAll('service'),
@@ -45,8 +45,19 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
       offset: url.searchParams.get('offset') ?? undefined,
       limit: url.searchParams.get('limit') ?? undefined,
     });
-    if (!parsed.success) return context.json({ error: '検索の条件が正しくありません', code: 'invalid_request' }, 400);
+  };
+  const invalidSearchRequest = { error: '検索の条件が正しくありません', code: 'invalid_request' } as const;
+
+  api.get('/search', async (context) => {
+    const parsed = parseSearchRequest(context.req.url);
+    if (!parsed.success) return context.json(invalidSearchRequest, 400);
     return context.json(await services.search.search(parsed.data));
+  });
+
+  api.get('/search/count', async (context) => {
+    const parsed = parseSearchRequest(context.req.url);
+    if (!parsed.success) return context.json(invalidSearchRequest, 400);
+    return context.json(await services.search.count(parsed.data));
   });
 
   api.get('/overview', async (context) => context.json(await services.search.overview()));
