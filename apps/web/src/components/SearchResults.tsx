@@ -1,4 +1,4 @@
-import { MAXIMUM_SEARCH_OFFSET, type SearchEntry, type SearchResponse } from '@mds/contracts';
+import { MAXIMUM_SEARCH_OFFSET, type SearchCountResponse, type SearchEntry, type SearchResponse } from '@mds/contracts';
 import { localeStore } from '../i18n/locale';
 import { text } from '../i18n/catalog';
 import { useLocale } from '../i18n/useLocale';
@@ -7,11 +7,14 @@ import { PAGE_SIZE } from '../lib/searchUrl';
 
 export function SearchResults({
   response,
+  count,
   offset,
   onOpen,
   onOffsetChange,
 }: {
   response: SearchResponse;
+  /** 件数は結果より遅れて届く。まだ届いていない間はnull。 */
+  count: SearchCountResponse | null;
   offset: number;
   onOpen: (entry: SearchEntry) => void;
   onOffsetChange: (offset: number) => void;
@@ -20,14 +23,16 @@ export function SearchResults({
   const intlLocale = localeStore.getIntlLocale();
   if (response.entries.length === 0) return <p className="muted">{text.noResults}</p>;
   const seconds = (response.elapsedMilliseconds / 1000).toFixed(2);
+  const total = count?.total ?? null;
+  const countLabel = count === null ? text.counting : total === null ? text.manyResults : `${formatCount(total, intlLocale)} ${text.entriesUnit}`;
   const hasNext =
     response.entries.length === PAGE_SIZE &&
     offset + PAGE_SIZE <= MAXIMUM_SEARCH_OFFSET &&
-    (response.total === null || offset + PAGE_SIZE < response.total);
+    (total === null || offset + PAGE_SIZE < total);
   return (
     <>
       <p className="search-summary muted" role="status">
-        {response.total === null ? text.manyResults : `${formatCount(response.total, intlLocale)} ${text.entriesUnit}`} · {seconds}s
+        {countLabel} · {seconds}s
       </p>
       <div className="table-scroll">
         <table>

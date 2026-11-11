@@ -47,11 +47,16 @@ export type SearchEntry = z.infer<typeof SearchEntrySchema>;
 
 export const SearchResponseSchema = z.object({
   entries: z.array(SearchEntrySchema),
-  /** 一致した件数。数えるのに時間がかかりすぎたときはnull。 */
-  total: z.number().nullable(),
   elapsedMilliseconds: z.number(),
 });
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
+
+/** 件数は数えるのに時間がかかるので、結果とは別に返す。 */
+export const SearchCountResponseSchema = z.object({
+  /** 一致した件数。数えるのに時間がかかりすぎたときはnull。 */
+  total: z.number().nullable(),
+});
+export type SearchCountResponse = z.infer<typeof SearchCountResponseSchema>;
 
 export const FacetCountSchema = z.object({ value: z.string(), count: z.number() });
 

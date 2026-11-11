@@ -10,7 +10,7 @@ import { SearchResults } from '../components/SearchResults';
 import { ServiceOverview } from '../components/ServiceOverview';
 import { text } from '../i18n/catalog';
 import { useLocale } from '../i18n/useLocale';
-import { currentOffset, hasSearchCondition, PAGE_SIZE, toggleValue, withOffset } from '../lib/searchUrl';
+import { currentOffset, hasSearchCondition, PAGE_SIZE, toggleValue, withOffset, withoutOffset } from '../lib/searchUrl';
 
 function errorMessage(failure: unknown): string | null {
   if (!failure) return null;
@@ -28,6 +28,12 @@ export function SearchPage() {
     key: searchable ? queryText : null,
     load: (signal) => api.search(new URLSearchParams(queryText), signal),
   });
+  // 件数はページを送っても変わらないので、ページの位置を除いた条件で1回だけ数える。
+  const countText = withoutOffset(parameters).toString();
+  const count = useQuery({
+    key: searchable ? countText : null,
+    load: (signal) => api.searchCount(new URLSearchParams(countText), signal),
+  });
   const offset = currentOffset(parameters);
   return (
     <div className="page search-page">
@@ -38,6 +44,7 @@ export function SearchPage() {
       {searchable && results.value && !results.loading && (
         <SearchResults
           response={results.value}
+          count={count.loading || count.error ? null : (count.value ?? null)}
           offset={offset}
           onOpen={setOpenEntry}
           onOffsetChange={(next) => setParameters(withOffset(parameters, next))}

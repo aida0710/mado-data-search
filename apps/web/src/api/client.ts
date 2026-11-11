@@ -3,6 +3,7 @@ import {
   EntryDetailSchema,
   IngestStatusResponseSchema,
   OverviewResponseSchema,
+  SearchCountResponseSchema,
   SearchResponseSchema,
   SessionResponseSchema,
 } from '@mds/contracts';
@@ -17,6 +18,8 @@ export const api = {
   logout: () => fetchResponse('/api/auth/logout', { init: jsonRequestInit('POST') }),
   search: (parameters: URLSearchParams, signal: AbortSignal) =>
     requestJson(`/api/search?${parameters}`, { schema: SearchResponseSchema, onUnauthorized, init: { signal } }),
+  searchCount: (parameters: URLSearchParams, signal: AbortSignal) =>
+    requestJson(`/api/search/count?${parameters}`, { schema: SearchCountResponseSchema, onUnauthorized, init: { signal } }),
   overview: (signal: AbortSignal) =>
     requestJson('/api/overview', { schema: OverviewResponseSchema, onUnauthorized, init: { signal } }),
   entry: (source: string, rowKey: string, signal: AbortSignal) =>
