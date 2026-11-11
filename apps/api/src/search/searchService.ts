@@ -19,6 +19,8 @@ const SEARCH_SETTINGS = {
 } as const;
 /** 当たる行が多い語は数えきれないので、ここで打ち切って件数なしで返す。 */
 const COUNT_TIMEOUT_SECONDS = 5;
+/** 件数は結果と同時に数える。結果の取得からCPUを奪わないよう、1スレッドで数える。 */
+const COUNT_THREADS = 1;
 const EPOCH_TEXT = '1970-01-01 00:00:00';
 
 const ENTRY_KEY = 'source, key_number, row_key';
@@ -94,7 +96,7 @@ export function createSearchService(clickhouse: ClickHouseClient, sources: Sourc
           query: countQuery(alternatives),
           format: 'JSONEachRow',
           query_params: parameters,
-          clickhouse_settings: { ...SEARCH_SETTINGS, max_execution_time: COUNT_TIMEOUT_SECONDS },
+          clickhouse_settings: { ...SEARCH_SETTINGS, max_execution_time: COUNT_TIMEOUT_SECONDS, max_threads: COUNT_THREADS },
         });
         const [row] = await result.json<{ matches: string | number }>();
         return { total: row ? Number(row.matches) : 0 };
