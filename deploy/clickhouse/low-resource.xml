@@ -3,7 +3,8 @@
   <mark_cache_size>536870912</mark_cache_size>
   <uncompressed_cache_size>0</uncompressed_cache_size>
   <merge_tree>
-    <max_bytes_to_merge_at_max_space_in_pool>32000000000</max_bytes_to_merge_at_max_space_in_pool>
+    <!-- マージは全文索引を作り直す間、元のパートの約2倍の一時ファイルを使う。空きディスクを食い尽くさないよう、1回のマージを10GBまでにする。 -->
+    <max_bytes_to_merge_at_max_space_in_pool>10000000000</max_bytes_to_merge_at_max_space_in_pool>
   </merge_tree>
   <query_log remove="1"/>
   <query_thread_log remove="1"/>
