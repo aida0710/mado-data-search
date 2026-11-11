@@ -5,8 +5,9 @@ const booleanLike = z.enum(['true', 'false']).transform((value) => value === 'tr
 
 const environmentSchema = z.object({
   NODE_ENV: z.string().default('development'),
-  MDS_PORT: z.coerce.number().int().default(4190),
-  MDS_PUBLIC_URL: z.url().default('http://127.0.0.1:4190'),
+  // 4190はfetchの仕様が接続を断るポート（bad port）なので、ヘルスチェックのfetchが失敗する。
+  MDS_PORT: z.coerce.number().int().default(4195),
+  MDS_PUBLIC_URL: z.url().default('http://127.0.0.1:4195'),
   MDS_WEB_DIRECTORY: z.string().optional(),
   MDS_SOURCES_FILE: z.string().default('config/sources.yaml'),
 
