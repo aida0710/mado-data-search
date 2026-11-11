@@ -6,6 +6,6 @@ export default defineConfig({
   server: {
     port: 5190,
     host: '127.0.0.1',
-    proxy: { '/api': process.env.MDS_WEB_API_PROXY_TARGET ?? 'http://127.0.0.1:4190' },
+    proxy: { '/api': process.env.MDS_WEB_API_PROXY_TARGET ?? 'http://127.0.0.1:4195' },
   },
 });

@@ -41,10 +41,10 @@ services:
   api:
     <<: *application
     ports:
-      - "127.0.0.1:4190:4190"
+      - "127.0.0.1:4195:4195"
     mem_limit: 1g
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4190/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4195/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 10s
       timeout: 3s
       retries: 6
