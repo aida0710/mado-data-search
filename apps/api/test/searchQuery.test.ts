@@ -7,14 +7,16 @@ const request = (input: Record<string, unknown>) => SearchRequestSchema.parse(in
 describe('検索の条件', () => {
   it('空白で分けた語をすべて含む行を探す', () => {
     expect(splitTerms('  音楽   piano ')).toEqual(['音楽', 'piano']);
-    const { where, parameters } = buildSearchCondition(request({ query: '音楽 piano', field: 'title' }));
+    const { alternatives, parameters } = buildSearchCondition(request({ query: '音楽 piano', field: 'title' }));
+    const [where] = alternatives;
+    expect(alternatives).toHaveLength(1);
     expect(where).toContain('hasAllTokens(title, {term0:String}) AND title ILIKE {termLike0:String}');
     expect(where).toContain('hasAllTokens(title, {term1:String}) AND title ILIKE {termLike1:String}');
     expect(parameters.termLike1).toBe('%piano%');
   });
 
   it('1文字の語は索引を使わずILIKEだけで探す', () => {
-    const { where } = buildSearchCondition(request({ query: '猫', field: 'title' }));
+    const [where] = buildSearchCondition(request({ query: '猫', field: 'title' })).alternatives;
     expect(where).toContain('title ILIKE');
     expect(where).not.toContain('hasAllTokens');
   });
@@ -24,21 +26,43 @@ describe('検索の条件', () => {
   });
 
   it('値はSQLに埋め込まずパラメータで渡す', () => {
-    const { where, parameters } = buildSearchCondition(request({ query: "x' OR 1=1", field: 'id' }));
-    expect(where).not.toContain('OR 1=1');
+    const { alternatives, parameters } = buildSearchCondition(request({ query: "x' OR 1=1", field: 'id' }));
+    expect(alternatives.join(' ')).not.toContain('OR 1=1');
     expect(parameters.exactId).toBe("x' OR 1=1");
   });
 
   it('IDの検索は語を分けずに完全一致で探す', () => {
-    const { where, parameters } = buildSearchCondition(request({ query: 'abc def', field: 'id' }));
-    expect(where).toBe('(external_id = {exactId:String} OR row_key = {exactId:String})');
+    const { alternatives, parameters } = buildSearchCondition(request({ query: 'abc def', field: 'id' }));
+    expect(alternatives).toEqual(['(external_id = {exactId:String})']);
     expect(parameters.exactId).toBe('abc def');
   });
 
+  it('数字だけのIDは行のキーでも探す', () => {
+    const { alternatives, parameters } = buildSearchCondition(request({ query: '4274834', field: 'id' }));
+    expect(alternatives).toEqual([
+      '(external_id = {exactId:String})',
+      '(key_number = {exactKeyNumber:UInt64}) AND NOT (external_id = {exactId:String})',
+    ]);
+    expect(parameters.exactKeyNumber).toBe('4274834');
+  });
+
+  it('すべての項目の検索は、索引を使えるよう条件ごとに分ける', () => {
+    const { alternatives } = buildSearchCondition(request({ query: '音楽', services: ['example'] }));
+    expect(alternatives).toHaveLength(3);
+    for (const where of alternatives) {
+      expect(where).not.toContain(' OR ');
+      expect(where).toContain('service IN {services:Array(String)}');
+    }
+    // 同じ行を2回数えないよう、後ろの条件は前の条件に当たった行を外す。
+    expect(alternatives[0]).not.toContain('NOT (');
+    expect(alternatives[1]).toContain('NOT (hasAllTokens(title, {term0:String}) AND title ILIKE {termLike0:String})');
+  });
+
   it('絞り込みの条件を足す', () => {
-    const { where, parameters } = buildSearchCondition(
+    const { alternatives, parameters } = buildSearchCondition(
       request({ services: ['example'], kinds: ['video'], languages: ['ja'], publishedFrom: '2026-01-01', publishedTo: '2026-02-01' }),
     );
+    const [where] = alternatives;
     expect(where).toContain('service IN {services:Array(String)}');
     expect(where).toContain('kind IN {kinds:Array(String)}');
     expect(where).toContain('language IN {languages:Array(String)}');
@@ -47,6 +71,6 @@ describe('検索の条件', () => {
   });
 
   it('条件が無いときは全件にする', () => {
-    expect(buildSearchCondition(request({})).where).toBe('1');
+    expect(buildSearchCondition(request({})).alternatives).toEqual(['1']);
   });
 });
