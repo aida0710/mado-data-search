@@ -10,6 +10,7 @@ import type {
 } from '@mds/contracts';
 import { attributeColumn } from '../clickhouse/attributeColumns.js';
 import { sourceUrl, type SourceCatalog } from '../sources/sourceConfig.js';
+import { conditionFieldDefinitions } from './conditionFields.js';
 import { buildSearchCondition } from './searchQuery.js';
 import {
   BOUNDARY_ROWS_PER_RESULT_ROW,
@@ -148,14 +149,9 @@ export function createSearchService(clickhouse: ClickHouseClient, catalog: Sourc
     },
 
     attributes(): AttributesResponse {
-      return {
-        attributes: catalog.attributes.map((attribute) => ({
-          ...attribute,
-          services: [
-            ...new Set(catalog.sources.filter((source) => attribute.name in source.attributes).map((source) => source.service)),
-          ],
-        })),
-      };
+      const conditionFields = conditionFieldDefinitions(catalog);
+      const attributeNames = new Set(catalog.attributes.map((attribute) => attribute.name));
+      return { attributes: conditionFields.filter((field) => attributeNames.has(field.name) && field.services.length > 0), conditionFields };
     },
 
     async overview(): Promise<OverviewResponse> {

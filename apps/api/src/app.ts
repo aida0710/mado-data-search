@@ -1,5 +1,5 @@
 /** HTTPの入口。入力の検証→サービスの呼び出し→結果の変換だけを行う。 */
-import { parseAttributeFilter, SearchRequestSchema } from '@mds/contracts';
+import { parseAttributeFilter, parseCondition, SearchRequestSchema } from '@mds/contracts';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
@@ -8,7 +8,7 @@ import type { OidcClient } from './auth/oidc.js';
 import type { DetailService } from './detail/detailService.js';
 import type { IngestStatusService } from './ingest/ingestStatusService.js';
 import { createAuthRoutes, createSessionReader, SESSION_COOKIE } from './routes/authRoutes.js';
-import { InvalidAttributeFilterError } from './search/attributeConditions.js';
+import { InvalidConditionError } from './search/leafCondition.js';
 import type { SearchService } from './search/searchService.js';
 
 export interface ApplicationServices {
@@ -34,6 +34,7 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
 
   const parseSearchRequest = (requestUrl: string) => {
     const url = new URL(requestUrl);
+    const conditionText = url.searchParams.get('condition');
     return SearchRequestSchema.safeParse({
       query: url.searchParams.get('query') ?? undefined,
       field: url.searchParams.get('field') ?? undefined,
@@ -41,6 +42,8 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
       kinds: url.searchParams.getAll('kind'),
       languages: url.searchParams.getAll('language'),
       attributeFilters: url.searchParams.getAll('attribute').map(parseAttributeFilter),
+      // 読めない条件はnullにして、形の検査で断る。
+      condition: conditionText === null ? undefined : parseCondition(conditionText),
       publishedFrom: url.searchParams.get('publishedFrom') ?? undefined,
       publishedTo: url.searchParams.get('publishedTo') ?? undefined,
       sort: url.searchParams.get('sort') ?? undefined,
@@ -77,7 +80,7 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
   app.route('/api', api);
 
   app.onError((failure, context) => {
-    if (failure instanceof InvalidAttributeFilterError) {
+    if (failure instanceof InvalidConditionError) {
       return context.json({ error: failure.message, code: 'invalid_request' }, 400);
     }
     console.error(failure);

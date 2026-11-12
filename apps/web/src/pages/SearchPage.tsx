@@ -3,6 +3,7 @@ import type { SearchEntry } from '@mds/contracts';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { ConditionBuilder } from '../components/ConditionBuilder';
 import { EntryDetailDialog } from '../components/EntryDetailDialog';
 import { SearchFilters } from '../components/SearchFilters';
 import { SearchForm } from '../components/SearchForm';
@@ -41,6 +42,7 @@ export function SearchPage() {
     <div className="page search-page">
       <SearchForm parameters={parameters} onChange={setParameters} />
       <SearchFilters overview={overview.value} attributes={attributeDefinitions} parameters={parameters} onChange={setParameters} />
+      <ConditionBuilder fields={attributes.value?.conditionFields ?? []} parameters={parameters} onChange={setParameters} />
       <ErrorNotice message={errorMessage(results.error ?? overview.error)} retry={results.reload} retryLabel={text.retry} />
       {results.loading && <LoadingMessage label={text.loading} />}
       {searchable && results.value && !results.loading && (

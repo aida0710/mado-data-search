@@ -1,5 +1,5 @@
 /** 検索の条件をURLに持つ。URLを共有すれば同じ結果を開ける。 */
-export const FILTER_PARAMETERS = ['service', 'kind', 'language', 'publishedFrom', 'publishedTo', 'attribute'] as const;
+export const FILTER_PARAMETERS = ['service', 'kind', 'language', 'publishedFrom', 'publishedTo', 'attribute', 'condition'] as const;
 export const PAGE_SIZE = 50;
 
 export function hasSearchCondition(parameters: URLSearchParams): boolean {
