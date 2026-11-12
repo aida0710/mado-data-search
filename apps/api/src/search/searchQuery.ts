@@ -1,7 +1,10 @@
 /** 検索の条件をClickHouseのWHERE句にする。値はすべてパラメータで渡す。 */
 import type { SearchField, SearchRequest } from '@mds/contracts';
 import type { AttributeDefinition } from '../sources/sourceConfig.js';
-import { attributeConditions } from './attributeConditions.js';
+import { attributeFilterConditions } from './attributeFilterConditions.js';
+import { conditionFieldsByName } from './conditionFields.js';
+import { branchConditions } from './conditionTree.js';
+import { InvalidConditionError, type LeafCondition } from './leafCondition.js';
 
 /** 結果を取る条件の1つ。 */
 export interface SearchAlternative {
@@ -31,6 +34,9 @@ export interface SourceOfService {
   id: string;
   service: string;
 }
+
+/** 1回の検索で読む条件の数の上限。条件ごとにSELECTが1つ走る。 */
+const MAXIMUM_SEARCH_ALTERNATIVES = 24;
 
 /** 検索語を空白で分ける。全部の語を含む行を探す。 */
 export function splitTerms(query: string): string[] {
@@ -159,14 +165,21 @@ export interface SearchCatalog {
   attributes: AttributeDefinition[];
 }
 
-export function buildSearchCondition(request: SearchRequest, catalog: SearchCatalog): SearchCondition {
-  const parameters: Record<string, unknown> = {};
+/** 何も絞らない枝。ANDとORの条件が無いときに、枝が1つあるものとして扱う。 */
+const UNCONDITIONAL_BRANCH: LeafCondition = { exact: '', indexOnly: '', isIndexOnlyBroader: false };
+
+function joinWithAnd(conditions: (string | null)[]): string {
+  const present = conditions.filter((condition): condition is string => Boolean(condition));
+  return present.length > 0 ? present.join(' AND ') : '1';
+}
+
+/** 絞り込みの欄（サービス、種類、言語、項目の選択肢、公開日）の条件。 */
+function filterConditions(request: SearchRequest, catalog: SearchCatalog, parameters: Record<string, unknown>): string[] {
   const filters: string[] = [];
-  const terms = splitTerms(request.query);
   filters.push(...serviceCondition(request.services, catalog.sources, parameters));
   if (request.kinds.length > 0) filters.push(...membershipCondition('kind', 'kinds', request.kinds, parameters));
   if (request.languages.length > 0) filters.push(...membershipCondition('language', 'languages', request.languages, parameters));
-  filters.push(...attributeConditions(request.attributeFilters, catalog.attributes, parameters));
+  filters.push(...attributeFilterConditions(request.attributeFilters, conditionFieldsByName(catalog.attributes), parameters));
   if (request.publishedFrom) {
     parameters.publishedFrom = `${request.publishedFrom} 00:00:00`;
     filters.push('published_at >= {publishedFrom:DateTime}');
@@ -175,24 +188,44 @@ export function buildSearchCondition(request: SearchRequest, catalog: SearchCata
     parameters.publishedTo = `${request.publishedTo} 23:59:59`;
     filters.push('published_at <= {publishedTo:DateTime}');
   }
-  if (terms.length === 0) {
-    const filtersOnly = filters.length > 0 ? filters.join(' AND ') : '1';
-    return {
-      alternatives: [{ where: filtersOnly, boundaryWhere: filtersOnly }],
-      countAlternatives: [filtersOnly],
-      countIsUpperBound: false,
-      parameters,
-    };
+  return filters;
+}
+
+/**
+ * 検索語、ANDとORの条件、絞り込みの欄を合わせる。
+ * 検索語の探し方（題名・チャンネル名・ID）とORの枝は、組み合わせごとに別の条件にする。
+ */
+export function buildSearchCondition(request: SearchRequest, catalog: SearchCatalog): SearchCondition {
+  const parameters: Record<string, unknown> = {};
+  const filters = filterConditions(request, catalog, parameters);
+  const terms = splitTerms(request.query);
+  const branches = request.condition
+    ? branchConditions(request.condition, {
+        fieldByName: conditionFieldsByName(catalog.attributes),
+        sourceIdsOfService: (service) => catalog.sources.filter((source) => source.service === service).map((source) => source.id),
+        parameters,
+      })
+    : [UNCONDITIONAL_BRANCH];
+  const termAlternatives: TermAlternatives =
+    terms.length > 0
+      ? termAlternativesOf(request.field, terms, parameters)
+      : { alternatives: [{ where: '', boundaryWhere: '' }], countAlternatives: [''], countIsUpperBound: false };
+  if (termAlternatives.alternatives.length * branches.length > MAXIMUM_SEARCH_ALTERNATIVES) {
+    throw new InvalidConditionError(`検索語とORの組み合わせが多すぎます（${MAXIMUM_SEARCH_ALTERNATIVES}まで）`);
   }
-  const { alternatives, countAlternatives, countIsUpperBound } = termAlternativesOf(request.field, terms, parameters);
-  const withFilters = (termCondition: string) => [termCondition, ...filters].join(' AND ');
-  return {
-    alternatives: alternatives.map(({ where, boundaryWhere }) => ({
-      where: withFilters(`(${where})`),
-      boundaryWhere: boundaryWhere === null ? null : withFilters(`(${boundaryWhere})`),
+  const wrapped = (condition: string) => (condition ? `(${condition})` : '');
+  const alternatives = termAlternatives.alternatives.flatMap(({ where, boundaryWhere }) =>
+    branches.map((branch) => ({
+      where: joinWithAnd([wrapped(where), wrapped(branch.exact), ...filters]),
+      boundaryWhere: boundaryWhere === null ? null : joinWithAnd([wrapped(boundaryWhere), wrapped(branch.indexOnly), ...filters]),
     })),
-    countAlternatives: countAlternatives.map(withFilters),
-    countIsUpperBound,
+  );
+  // 件数は索引だけの条件で数える。ORの枝は重なることがあるので、足さずに1つの条件にまとめて数える。
+  const branchesForCount = branches.length === 1 ? wrapped(branches[0]?.indexOnly ?? '') : `(${branches.map((branch) => `(${branch.indexOnly})`).join(' OR ')})`;
+  return {
+    alternatives,
+    countAlternatives: termAlternatives.countAlternatives.map((termCondition) => joinWithAnd([termCondition, branchesForCount, ...filters])),
+    countIsUpperBound: termAlternatives.countIsUpperBound || branches.some((branch) => branch.isIndexOnlyBroader),
     parameters,
   };
 }

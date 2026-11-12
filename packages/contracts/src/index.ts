@@ -20,15 +20,15 @@ const CalendarDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const AttributeTypeSchema = z.enum(['keyword', 'text', 'number', 'datetime', 'boolean']);
 export type AttributeType = z.infer<typeof AttributeTypeSchema>;
 
-/** 項目の比べ方。equalsは一致、containsは語を含む、atLeastとatMostは以上と以下。 */
-export const AttributeOperatorSchema = z.enum(['equals', 'contains', 'atLeast', 'atMost']);
+/** 項目の比べ方。equalsは一致、notEqualsは不一致、containsは語を含む、atLeastとatMostは以上と以下。 */
+export const AttributeOperatorSchema = z.enum(['equals', 'notEquals', 'contains', 'atLeast', 'atMost']);
 export type AttributeOperator = z.infer<typeof AttributeOperatorSchema>;
 
 /** 項目の型ごとに使える比べ方。 */
 export const ATTRIBUTE_OPERATORS_BY_TYPE: Record<AttributeType, readonly AttributeOperator[]> = {
-  keyword: ['equals'],
+  keyword: ['equals', 'notEquals'],
   text: ['contains'],
-  number: ['equals', 'atLeast', 'atMost'],
+  number: ['equals', 'notEquals', 'atLeast', 'atMost'],
   datetime: ['atLeast', 'atMost'],
   boolean: ['equals'],
 };
@@ -56,6 +56,56 @@ export function parseAttributeFilter(text: string): AttributeFilter | null {
   return parsed.success ? parsed.data : null;
 }
 
+/**
+ * ANDとORで組んだ条件。allは全部に当たる行、anyはどれかに当たる行。
+ * 葉は「項目・比べ方・値」で、項目はどの表にもある項目かデータセットごとの項目の名前。
+ */
+export type ConditionNode = { all: ConditionNode[] } | { any: ConditionNode[] } | AttributeFilter;
+
+/** 組める条件の深さと、葉の数の上限。 */
+export const MAXIMUM_CONDITION_DEPTH = 4;
+export const MAXIMUM_CONDITION_LEAVES = 30;
+
+export const ConditionNodeSchema: z.ZodType<ConditionNode> = z.lazy(() =>
+  z.union([
+    z.object({ all: z.array(ConditionNodeSchema).min(1) }).strict(),
+    z.object({ any: z.array(ConditionNodeSchema).min(1) }).strict(),
+    AttributeFilterSchema.strict(),
+  ]),
+);
+
+export function isConditionLeaf(node: ConditionNode): node is AttributeFilter {
+  return 'name' in node;
+}
+
+export function conditionChildren(node: ConditionNode): ConditionNode[] {
+  if ('all' in node) return node.all;
+  if ('any' in node) return node.any;
+  return [];
+}
+
+export function conditionDepth(node: ConditionNode): number {
+  return isConditionLeaf(node) ? 0 : 1 + Math.max(0, ...conditionChildren(node).map(conditionDepth));
+}
+
+export function conditionLeafCount(node: ConditionNode): number {
+  return isConditionLeaf(node) ? 1 : conditionChildren(node).reduce((sum, child) => sum + conditionLeafCount(child), 0);
+}
+
+/** URLに載せた条件を読む。形が違う、深すぎる、葉が多すぎるときはnull。 */
+export function parseCondition(text: string): ConditionNode | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const parsed = ConditionNodeSchema.safeParse(json);
+  if (!parsed.success) return null;
+  if (conditionDepth(parsed.data) > MAXIMUM_CONDITION_DEPTH || conditionLeafCount(parsed.data) > MAXIMUM_CONDITION_LEAVES) return null;
+  return parsed.data;
+}
+
 export const SearchRequestSchema = z.object({
   query: z.string().trim().max(MAXIMUM_QUERY_LENGTH).default(''),
   field: SearchFieldSchema.default('all'),
@@ -64,6 +114,8 @@ export const SearchRequestSchema = z.object({
   languages: z.array(z.string().max(16)).default([]),
   /** 同じ名前で一致の条件が複数あれば、どれかに当たる行。それ以外は全部に当たる行。 */
   attributeFilters: z.array(AttributeFilterSchema).max(MAXIMUM_ATTRIBUTE_FILTERS).default([]),
+  /** ANDとORで組んだ条件。ほかの絞り込みとはANDでつなぐ。 */
+  condition: ConditionNodeSchema.optional(),
   publishedFrom: CalendarDateSchema.optional(),
   publishedTo: CalendarDateSchema.optional(),
   sort: SearchSortSchema.default('newest'),
@@ -117,7 +169,11 @@ export const AttributeDefinitionSchema = z.object({
 });
 export type AttributeDefinition = z.infer<typeof AttributeDefinitionSchema>;
 
-export const AttributesResponseSchema = z.object({ attributes: z.array(AttributeDefinitionSchema) });
+export const AttributesResponseSchema = z.object({
+  attributes: z.array(AttributeDefinitionSchema),
+  /** 条件を組むときに選べる項目。どの表にもある項目（servicesが空）と、データセットごとの項目。 */
+  conditionFields: z.array(AttributeDefinitionSchema),
+});
 export type AttributesResponse = z.infer<typeof AttributesResponseSchema>;
 
 export const FacetCountSchema = z.object({ value: z.string(), count: z.number() });
