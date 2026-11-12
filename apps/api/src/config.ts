@@ -16,6 +16,9 @@ const environmentSchema = z.object({
   MDS_CLICKHOUSE_PASSWORD: z.string().default(''),
   MDS_CLICKHOUSE_DATABASE: z.string().default('mado_data_search'),
 
+  // ClickHouseに割り当てたCPUの数に合わせる。
+  MDS_SEARCH_MAX_THREADS: z.coerce.number().int().positive().default(4),
+
   MDS_MYSQL_HOST: z.string().default('127.0.0.1'),
   MDS_MYSQL_PORT: z.coerce.number().int().default(3306),
   MDS_MYSQL_USER: z.string().default('mado_data_search'),
@@ -67,6 +70,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
       password: parsed.MDS_CLICKHOUSE_PASSWORD,
       database: parsed.MDS_CLICKHOUSE_DATABASE,
     },
+    search: { maximumThreads: parsed.MDS_SEARCH_MAX_THREADS },
     mysql: {
       host: parsed.MDS_MYSQL_HOST,
       port: parsed.MDS_MYSQL_PORT,

@@ -55,6 +55,8 @@ export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 export const SearchCountResponseSchema = z.object({
   /** 一致した件数。数えるのに時間がかかりすぎたときはnull。 */
   total: z.number().nullable(),
+  /** 件数を索引だけで数えていて、実際の件数がこれより少ないことがあるとき。 */
+  isUpperBound: z.boolean(),
 });
 export type SearchCountResponse = z.infer<typeof SearchCountResponseSchema>;
 
