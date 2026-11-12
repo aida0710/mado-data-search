@@ -41,4 +41,4 @@ npm run dev -w @mds/web                              # http://127.0.0.1:5190
 
 ## 配備
 
-`deploy/compose.production.yml`、`deploy/env.example`、`deploy/clickhouse/low-resource.xml`を使います。イメージは`v*`のタグを付けるとGHCRへ出るので、`MDS_IMAGE`にdigestで固定します。ClickHouseのメモリは`mem_limit`（4GB）までです。ClickHouseは外へ開かず、APIだけをloopbackに開いて、前段のnginxからつなぎます。ログインはOIDCで、`MDS_OIDC_ALLOWED_GROUP`のグループに入っている人だけが使えます。リダイレクトURIは`<MDS_PUBLIC_URL>/api/auth/callback`です。
+`deploy/compose.production.yml`、`deploy/env.example`、`deploy/clickhouse/low-resource.xml`を使います。イメージは`v*`のタグを付けるとGHCRへ出るので、`MDS_IMAGE`にdigestで固定します。ClickHouseに渡すメモリとCPUは`MDS_CLICKHOUSE_MEMORY`と`MDS_CLICKHOUSE_CPUS`で決め（既定は4GBと4）、検索のスレッドの数`MDS_SEARCH_MAX_THREADS`をCPUの数に合わせます。ClickHouseは外へ開かず、APIだけをloopbackに開いて、前段のnginxからつなぎます。ログインはOIDCで、`MDS_OIDC_ALLOWED_GROUP`のグループに入っている人だけが使えます。リダイレクトURIは`<MDS_PUBLIC_URL>/api/auth/callback`です。

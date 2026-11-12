@@ -5,6 +5,11 @@ import { useLocale } from '../i18n/useLocale';
 import { formatCount, formatDate, formatDuration } from '../lib/format';
 import { PAGE_SIZE } from '../lib/searchUrl';
 
+function formatTotal(total: number, isUpperBound: boolean, intlLocale: string): string {
+  const counted = `${formatCount(total, intlLocale)} ${text.entriesUnit}`;
+  return isUpperBound ? `${text.upTo} ${counted}` : counted;
+}
+
 export function SearchResults({
   response,
   count,
@@ -24,7 +29,7 @@ export function SearchResults({
   if (response.entries.length === 0) return <p className="muted">{text.noResults}</p>;
   const seconds = (response.elapsedMilliseconds / 1000).toFixed(2);
   const total = count?.total ?? null;
-  const countLabel = count === null ? text.counting : total === null ? text.manyResults : `${formatCount(total, intlLocale)} ${text.entriesUnit}`;
+  const countLabel = count === null ? text.counting : total === null ? text.manyResults : formatTotal(total, count.isUpperBound, intlLocale);
   const hasNext =
     response.entries.length === PAGE_SIZE &&
     offset + PAGE_SIZE <= MAXIMUM_SEARCH_OFFSET &&

@@ -16,7 +16,7 @@ const clickhouse = createClickhouseClient(config.clickhouse);
 await ensureSchema(config.clickhouse, clickhouse);
 
 const app = createApp(config, {
-  search: createSearchService(clickhouse, sources),
+  search: createSearchService(clickhouse, sources, config.search),
   detail: createDetailService(createReadOnlyPool(config.mysql), sources),
   ingestStatus: createIngestStatusService(clickhouse, sources, config.ingest.intervalHours),
   oidc: config.auth.mode === 'oidc' ? createOidcClient(config.auth, config.publicUrl) : null,
