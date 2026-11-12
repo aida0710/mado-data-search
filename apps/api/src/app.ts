@@ -1,5 +1,5 @@
 /** HTTPの入口。入力の検証→サービスの呼び出し→結果の変換だけを行う。 */
-import { parseAttributeFilter, parseCondition, SearchRequestSchema } from '@mds/contracts';
+import { parseAttributeFilter, parseCondition, parsePeer, SearchRequestSchema } from '@mds/contracts';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
@@ -35,6 +35,7 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
   const parseSearchRequest = (requestUrl: string) => {
     const url = new URL(requestUrl);
     const conditionText = url.searchParams.get('condition');
+    const peerText = url.searchParams.get('peer');
     return SearchRequestSchema.safeParse({
       query: url.searchParams.get('query') ?? undefined,
       field: url.searchParams.get('field') ?? undefined,
@@ -44,6 +45,7 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
       attributeFilters: url.searchParams.getAll('attribute').map(parseAttributeFilter),
       // 読めない条件はnullにして、形の検査で断る。
       condition: conditionText === null ? undefined : parseCondition(conditionText),
+      peer: peerText === null ? undefined : parsePeer(peerText, url.searchParams.getAll('peerAttribute').map(parseAttributeFilter)),
       publishedFrom: url.searchParams.get('publishedFrom') ?? undefined,
       publishedTo: url.searchParams.get('publishedTo') ?? undefined,
       sort: url.searchParams.get('sort') ?? undefined,
@@ -74,6 +76,10 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
     if (!detail) return context.json({ error: '見つかりません', code: 'not_found' }, 404);
     return context.json(detail);
   });
+
+  api.get('/entries/:source/:rowKey/peers', async (context) =>
+    context.json(await services.search.peers(context.req.param('source'), context.req.param('rowKey'))),
+  );
 
   api.get('/ingest/status', async (context) => context.json(await services.ingestStatus.read()));
 

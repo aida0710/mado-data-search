@@ -4,9 +4,9 @@ import { buildSearchCondition as buildWithSources, escapeLikePattern, splitTerms
 
 const request = (input: Record<string, unknown>) => SearchRequestSchema.parse(input);
 const sources = [
-  { id: 'example-videos', service: 'example' },
-  { id: 'example-lives', service: 'example' },
-  { id: 'other-videos', service: 'other' },
+  { id: 'example-videos', service: 'example', identity: 'example-video' },
+  { id: 'example-lives', service: 'example', identity: 'example-live' },
+  { id: 'other-videos', service: 'other', identity: 'example-video' },
 ];
 const attributes = [
   { name: 'state', type: 'keyword' as const, label: { ja: '状態', en: 'State' }, values: [] },

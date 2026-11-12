@@ -1,6 +1,7 @@
 /** APIの呼び出し。応答の形はzodで確かめる。 */
 import {
   AttributesResponseSchema,
+  EntryPeersResponseSchema,
   EntryDetailSchema,
   IngestStatusResponseSchema,
   OverviewResponseSchema,
@@ -28,6 +29,12 @@ export const api = {
   entry: (source: string, rowKey: string, signal: AbortSignal) =>
     requestJson(`/api/entries/${encodeURIComponent(source)}/${encodeURIComponent(rowKey)}`, {
       schema: EntryDetailSchema,
+      onUnauthorized,
+      init: { signal },
+    }),
+  entryPeers: (source: string, rowKey: string, signal: AbortSignal) =>
+    requestJson(`/api/entries/${encodeURIComponent(source)}/${encodeURIComponent(rowKey)}/peers`, {
+      schema: EntryPeersResponseSchema,
       onUnauthorized,
       init: { signal },
     }),
