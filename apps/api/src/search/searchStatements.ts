@@ -3,7 +3,7 @@ import type { SearchRequest } from '@mds/contracts';
 import type { SearchAlternative } from './searchQuery.js';
 
 const ENTRY_KEY = 'source, key_number, row_key';
-const ENTRY_RESULT_COLUMNS = `${ENTRY_KEY}, service, kind, external_id, title, channel_name, language,
+export const ENTRY_RESULT_COLUMNS = `${ENTRY_KEY}, service, kind, external_id, title, channel_name, language,
   duration_seconds, published_at, url, ingested_at`;
 
 /**

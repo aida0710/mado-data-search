@@ -7,17 +7,20 @@ import { InvalidConditionError, leafCondition } from './leafCondition.js';
  * 同じ項目の「一致」が複数あれば、どれかに当たればよい（選択肢を複数選んだとき）。
  * それ以外の条件は、全部に当たる行だけを残す。
  */
-export function attributeFilterConditions(
-  filters: AttributeFilter[],
-  fieldByName: ReadonlyMap<string, ConditionField>,
-  parameters: Record<string, unknown>,
-): string[] {
+export function attributeFilterConditions(args: {
+  filters: AttributeFilter[];
+  fieldByName: ReadonlyMap<string, ConditionField>;
+  parameters: Record<string, unknown>;
+  /** 値を渡すパラメータの名前の前置き。同じ検索で2組の絞り込みを作るときに分ける。 */
+  parameterPrefix: string;
+}): string[] {
+  const { filters, fieldByName, parameters } = args;
   const equalsByName = new Map<string, string[]>();
   const conditions: string[] = [];
   filters.forEach((filter, index) => {
     const field = fieldByName.get(filter.name);
     if (!field) throw new InvalidConditionError(`定義の無い項目です: ${filter.name}`);
-    const { exact } = leafCondition({ filter, field, parameterName: `attribute${index}`, parameters });
+    const { exact } = leafCondition({ filter, field, parameterName: `${args.parameterPrefix}${index}`, parameters });
     if (filter.operator !== 'equals') {
       conditions.push(exact);
       return;

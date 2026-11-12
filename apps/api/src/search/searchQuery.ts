@@ -5,6 +5,7 @@ import { attributeFilterConditions } from './attributeFilterConditions.js';
 import { conditionFieldsByName } from './conditionFields.js';
 import { branchConditions } from './conditionTree.js';
 import { InvalidConditionError, type LeafCondition } from './leafCondition.js';
+import { peerCondition } from './peerCondition.js';
 
 /** 結果を取る条件の1つ。 */
 export interface SearchAlternative {
@@ -29,10 +30,11 @@ export interface SearchCondition {
   parameters: Record<string, unknown>;
 }
 
-/** サービスの絞り込みをパーティションで効かせるために、取り込み元とサービスの対応だけを受け取る。 */
+/** 条件を組むのに要る、取り込み元の情報。サービスの絞り込みはパーティション（取り込み元）で効かせる。 */
 export interface SourceOfService {
   id: string;
   service: string;
+  identity: string;
 }
 
 /** 1回の検索で読む条件の数の上限。条件ごとにSELECTが1つ走る。 */
@@ -163,6 +165,8 @@ function serviceCondition(services: string[], sources: SourceOfService[], parame
 export interface SearchCatalog {
   sources: SourceOfService[];
   attributes: AttributeDefinition[];
+  /** sourceごとの行数の見積もり。突き合わせで、メモリに載せる側を小さくするのに使う。 */
+  sourceRows?: ReadonlyMap<string, number>;
 }
 
 /** 何も絞らない枝。ANDとORの条件が無いときに、枝が1つあるものとして扱う。 */
@@ -179,7 +183,19 @@ function filterConditions(request: SearchRequest, catalog: SearchCatalog, parame
   filters.push(...serviceCondition(request.services, catalog.sources, parameters));
   if (request.kinds.length > 0) filters.push(...membershipCondition('kind', 'kinds', request.kinds, parameters));
   if (request.languages.length > 0) filters.push(...membershipCondition('language', 'languages', request.languages, parameters));
-  filters.push(...attributeFilterConditions(request.attributeFilters, conditionFieldsByName(catalog.attributes), parameters));
+  const fieldByName = conditionFieldsByName(catalog.attributes);
+  filters.push(...attributeFilterConditions({ filters: request.attributeFilters, fieldByName, parameters, parameterPrefix: 'attribute' }));
+  if (request.peer) {
+    filters.push(
+      peerCondition(request.peer, {
+        sources: catalog.sources,
+        selectedServices: request.services,
+        fieldByName,
+        sourceRows: catalog.sourceRows ?? new Map(),
+        parameters,
+      }),
+    );
+  }
   if (request.publishedFrom) {
     parameters.publishedFrom = `${request.publishedFrom} 00:00:00`;
     filters.push('published_at >= {publishedFrom:DateTime}');

@@ -1,12 +1,21 @@
 import { Dialog, ErrorNotice, LoadingMessage, useQuery } from '@mado/design-system/react';
-import type { SearchEntry } from '@mds/contracts';
+import type { AttributeDefinition, SearchEntry } from '@mds/contracts';
 import { ExternalLink } from 'lucide-react';
 import { api } from '../api/client';
 import { text } from '../i18n/catalog';
 import { useLocale } from '../i18n/useLocale';
+import { EntryPeers } from './EntryPeers';
 
 /** 長い列はClickHouseに写していないので、開いたときにMySQLから読む。 */
-export function EntryDetailDialog({ entry, onClose }: { entry: SearchEntry; onClose: () => void }) {
+export function EntryDetailDialog({
+  entry,
+  attributes,
+  onClose,
+}: {
+  entry: SearchEntry;
+  attributes: AttributeDefinition[];
+  onClose: () => void;
+}) {
   useLocale();
   const detail = useQuery({
     key: `${entry.source}/${entry.rowKey}`,
@@ -30,6 +39,7 @@ export function EntryDetailDialog({ entry, onClose }: { entry: SearchEntry; onCl
             </a>
           </p>
         )}
+        <EntryPeers entry={entry} attributes={attributes} />
         {detail.loading && <LoadingMessage label={text.loading} />}
         <ErrorNotice
           message={detail.error ? (detail.error instanceof Error ? detail.error.message : String(detail.error)) : null}

@@ -6,8 +6,8 @@ import { buildSearchCondition } from '../src/search/searchQuery.js';
 const leaf = (name: string, operator: string, value: string) => ({ name, operator, value }) as ConditionNode;
 const catalog = {
   sources: [
-    { id: 'example-videos', service: 'example' },
-    { id: 'other-videos', service: 'other' },
+    { id: 'example-videos', service: 'example', identity: '' },
+    { id: 'other-videos', service: 'other', identity: '' },
   ],
   attributes: [
     { name: 'state', type: 'keyword' as const, label: { ja: '状態', en: 'State' }, values: [] },

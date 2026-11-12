@@ -68,7 +68,7 @@ function ValueInput({ field, row, onChange }: { field: AttributeDefinition; row:
   );
 }
 
-function ConditionRow({
+export function ConditionRow({
   row,
   fields,
   onChange,

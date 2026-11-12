@@ -106,6 +106,34 @@ export function parseCondition(text: string): ConditionNode | null {
   return parsed.data;
 }
 
+/**
+ * ほかのデータセットとの突き合わせ。外部のIDが同じものが、相手のサービスに在るか無いかで絞る。
+ * filtersを付けると、相手の行のうち条件に当たるものだけを相手として数える。
+ */
+export const PeerComparisonSchema = z.object({
+  service: z.string().min(1).max(64),
+  presence: z.enum(['present', 'absent']),
+  filters: z.array(AttributeFilterSchema).max(MAXIMUM_ATTRIBUTE_FILTERS).default([]),
+});
+export type PeerComparison = z.infer<typeof PeerComparisonSchema>;
+
+const PEER_SEPARATOR = ':';
+
+/** URLに載せる形（サービス:在るか無いか）。相手の条件は別のパラメータに持つ。 */
+export function formatPeer(peer: Pick<PeerComparison, 'service' | 'presence'>): string {
+  return [peer.service, peer.presence].join(PEER_SEPARATOR);
+}
+
+export function parsePeer(text: string, filters: (AttributeFilter | null)[]): PeerComparison | null {
+  const separatorIndex = text.lastIndexOf(PEER_SEPARATOR);
+  const parsed = PeerComparisonSchema.safeParse({
+    service: text.slice(0, Math.max(0, separatorIndex)),
+    presence: text.slice(separatorIndex + 1),
+    filters,
+  });
+  return parsed.success ? parsed.data : null;
+}
+
 export const SearchRequestSchema = z.object({
   query: z.string().trim().max(MAXIMUM_QUERY_LENGTH).default(''),
   field: SearchFieldSchema.default('all'),
@@ -116,6 +144,8 @@ export const SearchRequestSchema = z.object({
   attributeFilters: z.array(AttributeFilterSchema).max(MAXIMUM_ATTRIBUTE_FILTERS).default([]),
   /** ANDとORで組んだ条件。ほかの絞り込みとはANDでつなぐ。 */
   condition: ConditionNodeSchema.optional(),
+  /** ほかのデータセットとの突き合わせ。ほかの絞り込みとはANDでつなぐ。 */
+  peer: PeerComparisonSchema.optional(),
   publishedFrom: CalendarDateSchema.optional(),
   publishedTo: CalendarDateSchema.optional(),
   sort: SearchSortSchema.default('newest'),
@@ -173,8 +203,14 @@ export const AttributesResponseSchema = z.object({
   attributes: z.array(AttributeDefinitionSchema),
   /** 条件を組むときに選べる項目。どの表にもある項目（servicesが空）と、データセットごとの項目。 */
   conditionFields: z.array(AttributeDefinitionSchema),
+  /** 外部のIDで突き合わせられるサービスの組。組の中のサービスどうしを比べられる。 */
+  comparableServiceGroups: z.array(z.array(z.string())),
 });
 export type AttributesResponse = z.infer<typeof AttributesResponseSchema>;
+
+/** 外部のIDが同じ、ほかのデータセットの行。 */
+export const EntryPeersResponseSchema = z.object({ peers: z.array(SearchEntrySchema) });
+export type EntryPeersResponse = z.infer<typeof EntryPeersResponseSchema>;
 
 export const FacetCountSchema = z.object({ value: z.string(), count: z.number() });
 
