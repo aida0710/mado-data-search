@@ -1,5 +1,7 @@
 /** 検索の条件をClickHouseのWHERE句にする。値はすべてパラメータで渡す。 */
 import type { SearchField, SearchRequest } from '@mds/contracts';
+import type { AttributeDefinition } from '../sources/sourceConfig.js';
+import { attributeConditions } from './attributeConditions.js';
 
 /** 結果を取る条件の1つ。 */
 export interface SearchAlternative {
@@ -151,13 +153,20 @@ function serviceCondition(services: string[], sources: SourceOfService[], parame
   return membershipCondition('source', 'sourcesOfServices', sourceIds, parameters);
 }
 
-export function buildSearchCondition(request: SearchRequest, sources: SourceOfService[]): SearchCondition {
+/** 条件を組み立てるのに要る、設定の中身。 */
+export interface SearchCatalog {
+  sources: SourceOfService[];
+  attributes: AttributeDefinition[];
+}
+
+export function buildSearchCondition(request: SearchRequest, catalog: SearchCatalog): SearchCondition {
   const parameters: Record<string, unknown> = {};
   const filters: string[] = [];
   const terms = splitTerms(request.query);
-  filters.push(...serviceCondition(request.services, sources, parameters));
+  filters.push(...serviceCondition(request.services, catalog.sources, parameters));
   if (request.kinds.length > 0) filters.push(...membershipCondition('kind', 'kinds', request.kinds, parameters));
   if (request.languages.length > 0) filters.push(...membershipCondition('language', 'languages', request.languages, parameters));
+  filters.push(...attributeConditions(request.attributeFilters, catalog.attributes, parameters));
   if (request.publishedFrom) {
     parameters.publishedFrom = `${request.publishedFrom} 00:00:00`;
     filters.push('published_at >= {publishedFrom:DateTime}');

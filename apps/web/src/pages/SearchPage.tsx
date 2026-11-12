@@ -22,6 +22,8 @@ export function SearchPage() {
   const [parameters, setParameters] = useSearchParams();
   const [openEntry, setOpenEntry] = useState<SearchEntry | null>(null);
   const overview = useQuery({ key: 'overview', load: api.overview });
+  const attributes = useQuery({ key: 'attributes', load: api.attributes });
+  const attributeDefinitions = attributes.value?.attributes ?? [];
   const searchable = hasSearchCondition(parameters);
   const queryText = `${parameters}&limit=${PAGE_SIZE}`;
   const results = useQuery({
@@ -38,12 +40,13 @@ export function SearchPage() {
   return (
     <div className="page search-page">
       <SearchForm parameters={parameters} onChange={setParameters} />
-      <SearchFilters overview={overview.value} parameters={parameters} onChange={setParameters} />
+      <SearchFilters overview={overview.value} attributes={attributeDefinitions} parameters={parameters} onChange={setParameters} />
       <ErrorNotice message={errorMessage(results.error ?? overview.error)} retry={results.reload} retryLabel={text.retry} />
       {results.loading && <LoadingMessage label={text.loading} />}
       {searchable && results.value && !results.loading && (
         <SearchResults
           response={results.value}
+          attributes={attributeDefinitions}
           count={count.loading || count.error ? null : (count.value ?? null)}
           offset={offset}
           onOpen={setOpenEntry}

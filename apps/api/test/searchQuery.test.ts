@@ -8,7 +8,14 @@ const sources = [
   { id: 'example-lives', service: 'example' },
   { id: 'other-videos', service: 'other' },
 ];
-const buildSearchCondition = (searchRequest: ReturnType<typeof request>) => buildWithSources(searchRequest, sources);
+const attributes = [
+  { name: 'state', type: 'keyword' as const, label: { ja: '状態', en: 'State' }, values: [] },
+  { name: 'view_count', type: 'number' as const, label: { ja: '再生数', en: 'Views' }, values: [] },
+  { name: 'summary', type: 'text' as const, label: { ja: '概要', en: 'Summary' }, values: [] },
+  { name: 'checked_at', type: 'datetime' as const, label: { ja: '確認日時', en: 'Checked at' }, values: [] },
+];
+const buildSearchCondition = (searchRequest: ReturnType<typeof request>) => buildWithSources(searchRequest, { sources, attributes });
+const filter = (name: string, operator: string, value: string) => ({ name, operator, value });
 
 describe('検索の条件', () => {
   it('空白で分けた語をすべて含む行を探す', () => {
@@ -101,6 +108,32 @@ describe('検索の条件', () => {
     expect(where).toContain('language IN {languages:Array(String)}');
     expect(parameters.publishedFrom).toBe('2026-01-01 00:00:00');
     expect(parameters.publishedTo).toBe('2026-02-01 23:59:59');
+  });
+
+  it('項目の条件は、同じ項目の一致どうしをORで、ほかをANDでつなぐ', () => {
+    const { alternatives, parameters } = buildSearchCondition(
+      request({
+        attributeFilters: [filter('state', 'equals', 'done'), filter('view_count', 'atLeast', '1000'), filter('state', 'equals', 'failed')],
+      }),
+    );
+    expect(alternatives[0]?.where).toBe(
+      'attr_view_count >= {attribute1:Float64} AND (attr_state = {attribute0:String} OR attr_state = {attribute2:String})',
+    );
+    expect(parameters).toMatchObject({ attribute0: 'done', attribute1: 1000, attribute2: 'failed' });
+  });
+
+  it('文の項目は全文索引で探し、日付だけの値はその日の端にする', () => {
+    const { alternatives, parameters } = buildSearchCondition(
+      request({ attributeFilters: [filter('summary', 'contains', '音楽'), filter('checked_at', 'atMost', '2026-01-31')] }),
+    );
+    expect(alternatives[0]?.where).toContain('hasAllTokens(attr_summary, {attribute0:String})');
+    expect(parameters.attribute1).toBe('2026-01-31 23:59:59');
+  });
+
+  it('定義に無い項目、型に合わない比べ方や値は断る', () => {
+    expect(() => buildSearchCondition(request({ attributeFilters: [filter('unknown', 'equals', 'x')] }))).toThrow('unknown');
+    expect(() => buildSearchCondition(request({ attributeFilters: [filter('state', 'atLeast', 'x')] }))).toThrow('atLeast');
+    expect(() => buildSearchCondition(request({ attributeFilters: [filter('view_count', 'equals', 'many')] }))).toThrow('数');
   });
 
   it('条件が無いときは全件にする', () => {

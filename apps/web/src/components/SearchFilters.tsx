@@ -1,6 +1,7 @@
-import type { OverviewResponse } from '@mds/contracts';
+import type { AttributeDefinition, OverviewResponse } from '@mds/contracts';
 import { text } from '../i18n/catalog';
 import { useLocale } from '../i18n/useLocale';
+import { AttributeFilters } from './AttributeFilters';
 import { FILTER_PARAMETERS, toggleValue, withoutFilters, withParameter } from '../lib/searchUrl';
 
 function FilterGroup({
@@ -37,10 +38,12 @@ function FilterGroup({
 
 export function SearchFilters({
   overview,
+  attributes,
   parameters,
   onChange,
 }: {
   overview: OverviewResponse | undefined;
+  attributes: AttributeDefinition[];
   parameters: URLSearchParams;
   onChange: (next: URLSearchParams) => void;
 }) {
@@ -54,6 +57,7 @@ export function SearchFilters({
           <FilterGroup label={text.kinds} name="kind" options={overview.kinds} parameters={parameters} onChange={onChange} />
         </>
       )}
+      <AttributeFilters attributes={attributes} parameters={parameters} onChange={onChange} />
       <div className="filter-group">
         <label className="filter-field">
           <span className="filter-label">{text.languages}</span>

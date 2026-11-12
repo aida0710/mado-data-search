@@ -9,7 +9,7 @@ import { ensureSchema } from './clickhouse/schema.js';
 import { ingestAllSources } from './ingest/ingestRunner.js';
 import { hasInterruptedRun, latestStartedAt } from './ingest/ingestRunStore.js';
 import { openReadOnlyConnection } from './ingest/mysqlConnection.js';
-import { loadSources } from './sources/sourceConfig.js';
+import { loadSourceCatalog } from './sources/sourceConfig.js';
 
 const MILLISECONDS_PER_HOUR = 3_600_000;
 
@@ -31,14 +31,15 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const runsOnce = argv.includes('--once');
   const selected = selectedSourceIds(argv);
-  const sources = loadSources(config.sourcesFile).filter((source) => selected.size === 0 || selected.has(source.id));
+  const catalog = loadSourceCatalog(config.sourcesFile);
+  const sources = catalog.sources.filter((source) => selected.size === 0 || selected.has(source.id));
 
   const stop = new AbortController();
   process.once('SIGTERM', () => stop.abort());
   process.once('SIGINT', () => stop.abort());
 
   const clickhouse = createClickhouseClient(config.clickhouse);
-  await ensureSchema(config.clickhouse, clickhouse);
+  await ensureSchema(config.clickhouse, clickhouse, catalog.attributes);
   const intervalMilliseconds = config.ingest.intervalHours * MILLISECONDS_PER_HOUR;
 
   // 再起動で途中のまま止まった取り込みは、次の間隔を待たずに続きから読む。
@@ -58,7 +59,7 @@ async function main(): Promise<void> {
     const connection = await openReadOnlyConnection(config.mysql);
     try {
       await ingestAllSources(
-        { connection, clickhouse, settings: config.ingest, signal: stop.signal, log },
+        { connection, clickhouse, attributes: catalog.attributes, settings: config.ingest, signal: stop.signal, log },
         sources,
       );
     } finally {

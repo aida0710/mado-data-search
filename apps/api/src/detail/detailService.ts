@@ -15,12 +15,8 @@ function cellText(value: unknown): string | null {
   return String(value);
 }
 
-function externalIdFrom(row: RowDataPacket): string {
-  for (const name of ['platform_video_id', 'platform_live_id', 'platform_movie_id', 'platform_channel_id', 'content_id', 'bvid', 'video_id', 'aweme_id', 'guid', 'login_name', 'id']) {
-    if (row[name] !== null && row[name] !== undefined) return String(row[name]);
-  }
-  return '';
-}
+/** 元のページのURLを作るための外部のIDを、詳細の列と名前がぶつからない別名で読む。 */
+const EXTERNAL_ID_ALIAS = 'mds_external_id';
 
 export function createDetailService(pool: Pool, sources: SourceConfig[]) {
   const sourceById = new Map(sources.map((source) => [source.id, source]));
@@ -48,7 +44,7 @@ export function createDetailService(pool: Pool, sources: SourceConfig[]) {
       if (!source?.detail) return null;
       const [rows, fields] = await pool.query<RowDataPacket[]>(
         {
-          sql: `SELECT ${source.detail.columns.join(', ')}
+          sql: `SELECT ${source.fields.externalId ?? "''"} AS ${EXTERNAL_ID_ALIAS}, ${source.detail.columns.join(', ')}
             FROM \`${source.database}\`.\`${source.table}\` t ${source.detail.join}
             WHERE t.\`${source.key}\` = ? LIMIT 1`,
           timeout: DETAIL_QUERY_TIMEOUT_MILLISECONDS,
@@ -63,8 +59,10 @@ export function createDetailService(pool: Pool, sources: SourceConfig[]) {
         service: source.service,
         kind: source.kind,
         rowKey,
-        url: sourceUrl(source, externalIdFrom(row), ''),
-        columns: fields.map((field) => ({ name: field.name, value: cellText(row[field.name]) })),
+        url: sourceUrl(source, cellText(row[EXTERNAL_ID_ALIAS]) ?? '', ''),
+        columns: fields
+          .filter((field) => field.name !== EXTERNAL_ID_ALIAS)
+          .map((field) => ({ name: field.name, value: cellText(row[field.name]) })),
         related,
       };
     },
