@@ -1,5 +1,5 @@
 /** HTTPの入口。入力の検証→サービスの呼び出し→結果の変換だけを行う。 */
-import { SearchRequestSchema } from '@mds/contracts';
+import { parseAttributeFilter, SearchRequestSchema } from '@mds/contracts';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
@@ -8,6 +8,7 @@ import type { OidcClient } from './auth/oidc.js';
 import type { DetailService } from './detail/detailService.js';
 import type { IngestStatusService } from './ingest/ingestStatusService.js';
 import { createAuthRoutes, createSessionReader, SESSION_COOKIE } from './routes/authRoutes.js';
+import { InvalidAttributeFilterError } from './search/attributeConditions.js';
 import type { SearchService } from './search/searchService.js';
 
 export interface ApplicationServices {
@@ -39,6 +40,7 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
       services: url.searchParams.getAll('service'),
       kinds: url.searchParams.getAll('kind'),
       languages: url.searchParams.getAll('language'),
+      attributeFilters: url.searchParams.getAll('attribute').map(parseAttributeFilter),
       publishedFrom: url.searchParams.get('publishedFrom') ?? undefined,
       publishedTo: url.searchParams.get('publishedTo') ?? undefined,
       sort: url.searchParams.get('sort') ?? undefined,
@@ -60,6 +62,8 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
     return context.json(await services.search.count(parsed.data));
   });
 
+  api.get('/attributes', (context) => context.json(services.search.attributes()));
+
   api.get('/overview', async (context) => context.json(await services.search.overview()));
 
   api.get('/entries/:source/:rowKey', async (context) => {
@@ -73,6 +77,9 @@ export function createApp(config: ApplicationConfig, services: ApplicationServic
   app.route('/api', api);
 
   app.onError((failure, context) => {
+    if (failure instanceof InvalidAttributeFilterError) {
+      return context.json({ error: failure.message, code: 'invalid_request' }, 400);
+    }
     console.error(failure);
     return context.json({ error: failure.message, code: 'internal_error' }, 500);
   });

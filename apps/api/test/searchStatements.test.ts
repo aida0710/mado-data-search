@@ -35,7 +35,8 @@ describe('上位の行の境目', () => {
       { where: 'a', boundaryWhere: 'a' },
       { where: 'b', boundaryWhere: null },
     ];
-    const query = entriesQuery(alternatives, 'newest', ['2026-01-01 00:00:00', null]);
+    const query = entriesQuery({ alternatives, sort: 'newest', boundaries: ['2026-01-01 00:00:00', null], attributeColumns: ['attr_state'] });
+    expect(query).toContain('ingested_at, attr_state FROM entries');
     expect(query).toContain('WHERE a AND published_at >= {boundary0:DateTime}');
     expect(query).not.toContain('boundary1');
     expect(boundaryParameters(['2026-01-01 00:00:00', null])).toEqual({ boundary0: '2026-01-01 00:00:00' });

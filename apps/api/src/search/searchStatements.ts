@@ -54,18 +54,26 @@ export const VERSIONS_READ_PER_ENTRY = 4;
  * 条件ごとに上位の行だけを取り、合わせてから並べ直す。全体の上位は、どれかの条件の上位に必ず入っている。
  * 2つの条件に当たった行と、同じ行の古い版は、行のキーで1つにする。
  */
-export function entriesQuery(alternatives: SearchAlternative[], sort: SearchRequest['sort'], boundaries: Boundaries): string {
+export function entriesQuery(args: {
+  alternatives: SearchAlternative[];
+  sort: SearchRequest['sort'];
+  boundaries: Boundaries;
+  /** 結果に付けて返す、データセットごとの項目の列。 */
+  attributeColumns: string[];
+}): string {
+  const { alternatives, sort, boundaries } = args;
+  const resultColumns = [ENTRY_RESULT_COLUMNS, ...args.attributeColumns].join(', ');
   const insideBoundary = sort === 'oldest' ? '<=' : '>=';
   const newestFirstWithinEntry = `ORDER BY published_at ${sortDirection(sort)}, ${ENTRY_KEY}, ingested_at DESC`;
   const topOfEachAlternative = alternatives
     .map(({ where }, index) => {
       const withinBoundary =
         boundaries[index] === null ? where : `${where} AND published_at ${insideBoundary} {${boundaryParameterName(index)}:DateTime}`;
-      return `SELECT * FROM (SELECT ${ENTRY_RESULT_COLUMNS} FROM entries WHERE ${withinBoundary}
+      return `SELECT * FROM (SELECT ${resultColumns} FROM entries WHERE ${withinBoundary}
         ${newestFirstWithinEntry} LIMIT {alternativeReadLimit:UInt32})`;
     })
     .join(' UNION ALL ');
-  return `SELECT ${ENTRY_RESULT_COLUMNS} FROM (${topOfEachAlternative})
+  return `SELECT ${resultColumns} FROM (${topOfEachAlternative})
     ${newestFirstWithinEntry} LIMIT 1 BY ${ENTRY_KEY}
     LIMIT {limit:UInt32} OFFSET {offset:UInt32}`;
 }

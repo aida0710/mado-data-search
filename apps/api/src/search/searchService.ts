@@ -1,13 +1,15 @@
 /** ClickHouseへの検索。ほかのサービスと同じVMで動かせるよう、1回の検索が使える資源に上限を付ける。 */
 import type { ClickHouseClient } from '@clickhouse/client';
 import type {
+  AttributesResponse,
   OverviewResponse,
   SearchCountResponse,
   SearchEntry,
   SearchRequest,
   SearchResponse,
 } from '@mds/contracts';
-import { sourceUrl, type SourceConfig } from '../sources/sourceConfig.js';
+import { attributeColumn } from '../clickhouse/attributeColumns.js';
+import { sourceUrl, type SourceCatalog } from '../sources/sourceConfig.js';
 import { buildSearchCondition } from './searchQuery.js';
 import {
   BOUNDARY_ROWS_PER_RESULT_ROW,
@@ -44,6 +46,7 @@ interface EntryResultRow {
   duration_seconds: number | string;
   published_at: string;
   url: string;
+  [attributeColumnName: `attr_${string}`]: string | number | boolean | null;
 }
 
 export interface SearchServiceOptions {
@@ -51,9 +54,21 @@ export interface SearchServiceOptions {
   maximumThreads: number;
 }
 
-export function createSearchService(clickhouse: ClickHouseClient, sources: SourceConfig[], options: SearchServiceOptions) {
+export function createSearchService(clickhouse: ClickHouseClient, catalog: SourceCatalog, options: SearchServiceOptions) {
   const searchSettings = { ...SEARCH_SETTINGS, max_threads: options.maximumThreads };
-  const sourceById = new Map(sources.map((source) => [source.id, source]));
+  const sourceById = new Map(catalog.sources.map((source) => [source.id, source]));
+  const attributeColumns = catalog.attributes.map((attribute) => attributeColumn(attribute.name));
+
+  /** そのsourceが持つ項目のうち、値のあるもの。 */
+  function attributesOf(row: EntryResultRow): SearchEntry['attributes'] {
+    const names = Object.keys(sourceById.get(row.source)?.attributes ?? {});
+    return Object.fromEntries(
+      names.flatMap((name) => {
+        const value = row[attributeColumn(name)];
+        return value === null || value === undefined || value === '' ? [] : [[name, value]];
+      }),
+    );
+  }
 
   function toEntry(row: EntryResultRow): SearchEntry {
     const source = sourceById.get(row.source);
@@ -69,12 +84,13 @@ export function createSearchService(clickhouse: ClickHouseClient, sources: Sourc
       durationSeconds: Number(row.duration_seconds),
       publishedAt: row.published_at === EPOCH_TEXT ? null : row.published_at,
       url: source ? sourceUrl(source, row.external_id, row.url) : row.url || null,
+      attributes: attributesOf(row),
     };
   }
 
   return {
     async count(request: SearchRequest): Promise<SearchCountResponse> {
-      const { countAlternatives, countIsUpperBound, parameters } = buildSearchCondition(request, sources);
+      const { countAlternatives, countIsUpperBound, parameters } = buildSearchCondition(request, catalog);
       try {
         const result = await clickhouse.query({
           query: countQuery(countAlternatives),
@@ -92,7 +108,7 @@ export function createSearchService(clickhouse: ClickHouseClient, sources: Sourc
 
     async search(request: SearchRequest): Promise<SearchResponse> {
       const startedAt = Date.now();
-      const { alternatives, parameters } = buildSearchCondition(request, sources);
+      const { alternatives, parameters } = buildSearchCondition(request, catalog);
       const alternativeLimit = request.offset + request.limit;
 
       async function findBoundaries(): Promise<Boundaries> {
@@ -110,7 +126,7 @@ export function createSearchService(clickhouse: ClickHouseClient, sources: Sourc
 
       async function readPage(boundaries: Boundaries): Promise<EntryResultRow[]> {
         const result = await clickhouse.query({
-          query: entriesQuery(alternatives, request.sort, boundaries),
+          query: entriesQuery({ alternatives, sort: request.sort, boundaries, attributeColumns }),
           format: 'JSONEachRow',
           query_params: {
             ...parameters,
@@ -129,6 +145,17 @@ export function createSearchService(clickhouse: ClickHouseClient, sources: Sourc
       // 索引には当たるが語が続けて現れない行が多いと、境目の内側ではページが埋まらない。そのときは全部を読む。
       if (!isPageWithinBoundaries(page, request, boundaries)) page = await readPage(alternatives.map(() => null));
       return { entries: page.map(toEntry), elapsedMilliseconds: Date.now() - startedAt };
+    },
+
+    attributes(): AttributesResponse {
+      return {
+        attributes: catalog.attributes.map((attribute) => ({
+          ...attribute,
+          services: [
+            ...new Set(catalog.sources.filter((source) => attribute.name in source.attributes).map((source) => source.service)),
+          ],
+        })),
+      };
     },
 
     async overview(): Promise<OverviewResponse> {

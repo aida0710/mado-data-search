@@ -1,9 +1,11 @@
 /**
  * ClickHouseの表。検索に使う列だけを持ち、説明文などの長い列は詳細を開いたときにMySQLから読む。
- * 正本はMySQLで、この表はいつでも作り直せる。移行は持たず、形を変えたら取り込み直す。
+ * 正本はMySQLで、この表はいつでも作り直せる。列は足すだけで、中身は取り込みが定義の変わったsourceを読み直して埋める。
  */
 import type { ClickHouseClient } from '@clickhouse/client';
 import type { ApplicationConfig } from '../config.js';
+import type { AttributeDefinition } from '../sources/sourceConfig.js';
+import { addAttributeColumnClauses } from './attributeColumns.js';
 import { createClickhouseAdminClient } from './client.js';
 
 const ENTRY_COLUMNS = `
@@ -34,13 +36,24 @@ const ENTRY_ENGINE = `ENGINE = ReplacingMergeTree(ingested_at)
   PARTITION BY source
   ORDER BY (source, key_number, row_key)`;
 
-export async function ensureSchema(config: ApplicationConfig['clickhouse'], client: ClickHouseClient): Promise<void> {
+/** あとから足した共通の列。前からある表にも足せるよう、CREATE TABLEとは別にALTERで足す。 */
+const ADDED_ENTRY_COLUMN_CLAUSES = ['ADD COLUMN IF NOT EXISTS identity LowCardinality(String)'];
+
+export async function ensureSchema(
+  config: ApplicationConfig['clickhouse'],
+  client: ClickHouseClient,
+  attributes: AttributeDefinition[],
+): Promise<void> {
   const adminClient = createClickhouseAdminClient(config);
   await adminClient.command({ query: `CREATE DATABASE IF NOT EXISTS ${config.database}` });
   await adminClient.close();
   await client.command({ query: `CREATE TABLE IF NOT EXISTS entries (${ENTRY_COLUMNS}${ENTRY_INDEXES}) ${ENTRY_ENGINE}` });
   // 差し替えの元になる表は、列・索引・エンジンを同じにしないとREPLACE PARTITIONできない。
   await client.command({ query: `CREATE TABLE IF NOT EXISTS entries_staging (${ENTRY_COLUMNS}${ENTRY_INDEXES}) ${ENTRY_ENGINE}` });
+  const addColumns = [...ADDED_ENTRY_COLUMN_CLAUSES, ...addAttributeColumnClauses(attributes)].join(', ');
+  for (const table of ['entries', 'entries_staging']) {
+    await client.command({ query: `ALTER TABLE ${table} ${addColumns}` });
+  }
   await client.command({
     query: `CREATE TABLE IF NOT EXISTS ingest_runs (
       run_id String,
@@ -55,4 +68,5 @@ export async function ensureSchema(config: ApplicationConfig['clickhouse'], clie
       updated_at DateTime64(3)
     ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (source, run_id)`,
   });
+  await client.command({ query: 'ALTER TABLE ingest_runs ADD COLUMN IF NOT EXISTS definition_hash String' });
 }

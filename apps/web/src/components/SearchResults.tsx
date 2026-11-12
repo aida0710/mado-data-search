@@ -1,9 +1,16 @@
-import { MAXIMUM_SEARCH_OFFSET, type SearchCountResponse, type SearchEntry, type SearchResponse } from '@mds/contracts';
+import {
+  MAXIMUM_SEARCH_OFFSET,
+  type AttributeDefinition,
+  type SearchCountResponse,
+  type SearchEntry,
+  type SearchResponse,
+} from '@mds/contracts';
 import { localeStore } from '../i18n/locale';
 import { text } from '../i18n/catalog';
 import { useLocale } from '../i18n/useLocale';
 import { formatCount, formatDate, formatDuration } from '../lib/format';
 import { PAGE_SIZE } from '../lib/searchUrl';
+import { EntryAttributeBadges } from './EntryAttributeBadges';
 
 function formatTotal(total: number, isUpperBound: boolean, intlLocale: string): string {
   const counted = `${formatCount(total, intlLocale)} ${text.entriesUnit}`;
@@ -12,12 +19,14 @@ function formatTotal(total: number, isUpperBound: boolean, intlLocale: string): 
 
 export function SearchResults({
   response,
+  attributes,
   count,
   offset,
   onOpen,
   onOffsetChange,
 }: {
   response: SearchResponse;
+  attributes: AttributeDefinition[];
   /** 件数は結果より遅れて届く。まだ届いていない間はnull。 */
   count: SearchCountResponse | null;
   offset: number;
@@ -62,6 +71,7 @@ export function SearchResults({
                 <td>
                   <span className="status-badge status-neutral">{entry.service}</span>
                   <span className="muted entry-kind">{entry.kind}</span>
+                  <EntryAttributeBadges entry={entry} attributes={attributes} />
                 </td>
                 <td className="entry-channel">{entry.channelName}</td>
                 <td>{entry.language}</td>

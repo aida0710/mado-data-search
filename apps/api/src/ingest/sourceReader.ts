@@ -1,6 +1,12 @@
 /** MySQLの1つの表を、主キーの順に少しずつ読む。 */
 import type { Connection, RowDataPacket } from 'mysql2/promise';
-import type { SourceConfig } from '../sources/sourceConfig.js';
+import { attributeColumn } from '../clickhouse/attributeColumns.js';
+import type { AttributeType, SourceConfig } from '../sources/sourceConfig.js';
+
+/** 項目の名前から型を引く。 */
+export type AttributeTypes = ReadonlyMap<string, AttributeType>;
+
+type AttributeValue = string | number | boolean | null;
 
 export interface EntryRow {
   source: string;
@@ -16,38 +22,91 @@ export interface EntryRow {
   duration_seconds: number;
   published_at: string;
   url: string;
+  identity: string;
   ingested_at: string;
+  /** データセットごとの項目。キーはClickHouseの列の名前。 */
+  [attributeColumnName: `attr_${string}`]: AttributeValue;
 }
 
 const EPOCH = '1970-01-01 00:00:00';
 const MAXIMUM_DURATION_SECONDS = 4_294_967_295;
 
-export function buildChunkSql(source: SourceConfig): string {
+function selectList(source: SourceConfig): string {
   const expression = (field: keyof SourceConfig['fields']) => source.fields[field] ?? "''";
-  return `SELECT t.\`${source.key}\` AS row_key,
-    ${expression('externalId')} AS external_id,
-    ${expression('title')} AS title,
-    ${expression('channelName')} AS channel_name,
-    ${expression('channelKey')} AS channel_key,
-    ${expression('language')} AS language,
-    ${source.fields.durationSeconds ?? '0'} AS duration_seconds,
-    ${source.fields.publishedAt ?? 'NULL'} AS published_at,
-    ${expression('url')} AS url
-  FROM \`${source.database}\`.\`${source.table}\` t ${source.join}
+  const attributes = Object.entries(source.attributes).map(
+    ([name, attributeExpression]) => `${attributeExpression} AS ${attributeColumn(name)}`,
+  );
+  return [
+    `t.\`${source.key}\` AS row_key`,
+    `${expression('externalId')} AS external_id`,
+    `${expression('title')} AS title`,
+    `${expression('channelName')} AS channel_name`,
+    `${expression('channelKey')} AS channel_key`,
+    `${expression('language')} AS language`,
+    `${source.fields.durationSeconds ?? '0'} AS duration_seconds`,
+    `${source.fields.publishedAt ?? 'NULL'} AS published_at`,
+    `${expression('url')} AS url`,
+    ...attributes,
+  ].join(',\n    ');
+}
+
+function fromClause(source: SourceConfig): string {
+  return `FROM \`${source.database}\`.\`${source.table}\` t ${source.join}`;
+}
+
+export function buildChunkSql(source: SourceConfig): string {
+  return `SELECT ${selectList(source)}
+  ${fromClause(source)}
   WHERE t.\`${source.key}\` > ?
   ORDER BY t.\`${source.key}\`
   LIMIT ?`;
+}
+
+/** キーを指定して読むSQL。キーの並びを1つの ? で受ける。 */
+export function buildRowsByKeySql(source: SourceConfig): string {
+  return `SELECT ${selectList(source)}
+  ${fromClause(source)}
+  WHERE t.\`${source.key}\` IN (?)`;
 }
 
 function textOf(value: unknown): string {
   return value === null || value === undefined ? '' : String(value);
 }
 
-function publishedAtOf(value: unknown): string {
+/** MySQLのゼロ日付と、DateTimeの範囲に入らない日付は不明として扱う。 */
+function dateTimeOf(value: unknown): string | null {
   const text = textOf(value);
-  // MySQLのゼロ日付と、DateTimeの範囲に入らない日付は不明として扱う。
-  if (!text || text.startsWith('0000') || text < EPOCH || text >= '2106') return EPOCH;
+  if (!text || text.startsWith('0000') || text < EPOCH || text >= '2106') return null;
   return text.slice(0, 19);
+}
+
+function publishedAtOf(value: unknown): string {
+  return dateTimeOf(value) ?? EPOCH;
+}
+
+function numberOf(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function booleanOf(value: unknown): boolean | null {
+  if (value === null || value === undefined) return null;
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+function attributeValueOf(type: AttributeType, value: unknown): AttributeValue {
+  switch (type) {
+    case 'keyword':
+    case 'text':
+      return textOf(value);
+    case 'number':
+      return numberOf(value);
+    case 'datetime':
+      return dateTimeOf(value);
+    case 'boolean':
+      return booleanOf(value);
+  }
 }
 
 function durationOf(value: unknown): number {
@@ -56,9 +115,23 @@ function durationOf(value: unknown): number {
   return Math.min(seconds, MAXIMUM_DURATION_SECONDS);
 }
 
-export function toEntryRow(source: SourceConfig, row: RowDataPacket, ingestedAt: string): EntryRow {
+export function toEntryRow(args: {
+  source: SourceConfig;
+  attributeTypes: AttributeTypes;
+  row: RowDataPacket;
+  ingestedAt: string;
+}): EntryRow {
+  const { source, row } = args;
   const rowKey = textOf(row.row_key);
+  const attributes = Object.fromEntries(
+    Object.keys(source.attributes).map((name) => {
+      const type = args.attributeTypes.get(name);
+      if (!type) throw new Error(`${source.id}: 定義の無い項目です: ${name}`);
+      return [attributeColumn(name), attributeValueOf(type, row[attributeColumn(name)])];
+    }),
+  );
   return {
+    ...attributes,
     source: source.id,
     service: source.service,
     kind: source.kind,
@@ -73,23 +146,40 @@ export function toEntryRow(source: SourceConfig, row: RowDataPacket, ingestedAt:
     duration_seconds: durationOf(row.duration_seconds),
     published_at: publishedAtOf(row.published_at),
     url: textOf(row.url),
-    ingested_at: ingestedAt,
+    identity: source.identity,
+    ingested_at: args.ingestedAt,
   };
 }
 
-export async function readChunk(args: {
+export interface ReadContext {
   connection: Connection;
   source: SourceConfig;
-  afterKey: string;
-  chunkRows: number;
+  attributeTypes: AttributeTypes;
   ingestedAt: string;
-}): Promise<{ rows: EntryRow[]; lastKey: string | null }> {
-  const [packets] = await args.connection.query<RowDataPacket[]>(buildChunkSql(args.source), [
-    args.afterKey,
-    args.chunkRows,
+}
+
+function toEntryRows(context: ReadContext, packets: RowDataPacket[]): EntryRow[] {
+  return packets.map((row) =>
+    toEntryRow({ source: context.source, attributeTypes: context.attributeTypes, row, ingestedAt: context.ingestedAt }),
+  );
+}
+
+export async function readChunk(
+  context: ReadContext,
+  position: { afterKey: string; chunkRows: number },
+): Promise<{ rows: EntryRow[]; lastKey: string | null }> {
+  const [packets] = await context.connection.query<RowDataPacket[]>(buildChunkSql(context.source), [
+    position.afterKey,
+    position.chunkRows,
   ]);
-  const rows = packets.map((packet) => toEntryRow(args.source, packet, args.ingestedAt));
+  const rows = toEntryRows(context, packets);
   return { rows, lastKey: rows.at(-1)?.row_key ?? null };
+}
+
+export async function readRowsByKey(context: ReadContext, keys: string[]): Promise<EntryRow[]> {
+  if (keys.length === 0) return [];
+  const [packets] = await context.connection.query<RowDataPacket[]>(buildRowsByKeySql(context.source), [keys]);
+  return toEntryRows(context, packets);
 }
 
 /** 1行あたりの大きさ。読みの速さを絞る計算に使う。統計なので正確でなくてよい。 */

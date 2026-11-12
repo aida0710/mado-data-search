@@ -8,15 +8,16 @@ import { createDetailService } from './detail/detailService.js';
 import { createIngestStatusService } from './ingest/ingestStatusService.js';
 import { createReadOnlyPool } from './ingest/mysqlConnection.js';
 import { createSearchService } from './search/searchService.js';
-import { loadSources } from './sources/sourceConfig.js';
+import { loadSourceCatalog } from './sources/sourceConfig.js';
 
 const config = loadConfig();
-const sources = loadSources(config.sourcesFile);
+const catalog = loadSourceCatalog(config.sourcesFile);
+const { sources } = catalog;
 const clickhouse = createClickhouseClient(config.clickhouse);
-await ensureSchema(config.clickhouse, clickhouse);
+await ensureSchema(config.clickhouse, clickhouse, catalog.attributes);
 
 const app = createApp(config, {
-  search: createSearchService(clickhouse, sources, config.search),
+  search: createSearchService(clickhouse, catalog, config.search),
   detail: createDetailService(createReadOnlyPool(config.mysql), sources),
   ingestStatus: createIngestStatusService(clickhouse, sources, config.ingest.intervalHours),
   oidc: config.auth.mode === 'oidc' ? createOidcClient(config.auth, config.publicUrl) : null,

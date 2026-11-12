@@ -1,5 +1,22 @@
 # どの表をどの項目として検索に載せるか。これを config/sources.yaml に写して運用の表に合わせる。
 # 式はSQLのまま書く。t が元の表、join で足した表は別名で参照する。
+
+# データセットごとに違う項目の定義。同じ名前の項目は、どのsourceでも同じ意味として扱う。
+# type: keyword（決まった値を取る短い文字）、text（検索語で探す文）、number、datetime、boolean。
+# 定義を足すとClickHouseに列が足され、その項目を使うsourceは次の取り込みで全件を読み直す。
+attributes:
+  download_state:
+    type: keyword
+    label: { ja: ダウンロード, en: Download }
+    # 取りうる値を書くと、画面に選択肢として出る。
+    values:
+      - { value: done, label: { ja: 済み, en: Done } }
+      - { value: pending, label: { ja: 未, en: Pending } }
+      - { value: failed, label: { ja: 失敗, en: Failed } }
+  view_count:
+    type: number
+    label: { ja: 再生数, en: Views }
+
 sources:
   - id: example-videos
     service: example
@@ -20,6 +37,16 @@ sources:
       durationSeconds: t.duration_seconds
       publishedAt: t.published_at
     urlTemplate: https://example.com/watch/{externalId}
+    # 外部のIDが何のIDか。同じidentityで外部のIDが同じ行は、sourceが違っても同じものとして扱う。
+    identity: example-video
+    # データセットごとの項目。値はSQLの式。1対多の表はJOINせず、EXISTSやスカラーのサブクエリで書く。
+    attributes:
+      download_state: CASE WHEN EXISTS (SELECT 1 FROM example.downloads d WHERE d.video_id = t.id) THEN 'done' ELSE 'pending' END
+      view_count: t.view_count
+    # 古い行があとから変わる表で、前回の取り込みのあとに変わった行のキーを返すSELECT。
+    # ? には前回の開始からの秒数が入る。
+    changedKeys:
+      - SELECT video_id FROM example.downloads WHERE completed_at >= NOW() - INTERVAL ? SECOND
     # 詳細を開いたときにMySQLから読む列と、関連する行。
     detail:
       columns: [t.title, t.description, t.published_at]

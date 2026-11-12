@@ -1,5 +1,6 @@
 /** APIの呼び出し。応答の形はzodで確かめる。 */
 import {
+  AttributesResponseSchema,
   EntryDetailSchema,
   IngestStatusResponseSchema,
   OverviewResponseSchema,
@@ -20,6 +21,8 @@ export const api = {
     requestJson(`/api/search?${parameters}`, { schema: SearchResponseSchema, onUnauthorized, init: { signal } }),
   searchCount: (parameters: URLSearchParams, signal: AbortSignal) =>
     requestJson(`/api/search/count?${parameters}`, { schema: SearchCountResponseSchema, onUnauthorized, init: { signal } }),
+  attributes: (signal: AbortSignal) =>
+    requestJson('/api/attributes', { schema: AttributesResponseSchema, onUnauthorized, init: { signal } }),
   overview: (signal: AbortSignal) =>
     requestJson('/api/overview', { schema: OverviewResponseSchema, onUnauthorized, init: { signal } }),
   entry: (source: string, rowKey: string, signal: AbortSignal) =>

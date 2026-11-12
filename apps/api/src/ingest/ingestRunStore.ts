@@ -12,6 +12,8 @@ export interface IngestRun {
   rowsRead: number;
   lastKey: string;
   error: string;
+  /** この実行が読んだsourceの定義の指紋。 */
+  definitionHash: string;
 }
 
 interface IngestRunRow {
@@ -24,6 +26,7 @@ interface IngestRunRow {
   rows_read: string | number;
   last_key: string;
   error: string;
+  definition_hash: string;
 }
 
 function toRun(row: IngestRunRow): IngestRun {
@@ -37,6 +40,7 @@ function toRun(row: IngestRunRow): IngestRun {
     rowsRead: Number(row.rows_read),
     lastKey: row.last_key,
     error: row.error,
+    definitionHash: row.definition_hash,
   };
 }
 
@@ -59,6 +63,7 @@ export async function saveRun(client: ClickHouseClient, run: IngestRun): Promise
         rows_read: run.rowsRead,
         last_key: run.lastKey,
         error: run.error,
+        definition_hash: run.definitionHash,
         updated_at: new Date().toISOString().replace('T', ' ').replace('Z', ''),
       },
     ],
@@ -68,7 +73,7 @@ export async function saveRun(client: ClickHouseClient, run: IngestRun): Promise
 /** sourceごとの最新の実行。 */
 export async function latestRuns(client: ClickHouseClient): Promise<Map<string, IngestRun>> {
   const result = await client.query({
-    query: `SELECT run_id, source, mode, status, started_at, finished_at, rows_read, last_key, error
+    query: `SELECT run_id, source, mode, status, started_at, finished_at, rows_read, last_key, error, definition_hash
       FROM ingest_runs FINAL
       ORDER BY started_at DESC, updated_at DESC
       LIMIT 1 BY source`,
@@ -84,6 +89,25 @@ export async function hasInterruptedRun(client: ClickHouseClient): Promise<boole
   return [...runs.values()].some((run) => run.status === 'running');
 }
 
+/** sourceを最後に読み終えた実行。 */
+export async function lastSucceededRun(client: ClickHouseClient, source: string): Promise<IngestRun | null> {
+  const result = await client.query({
+    query: `SELECT run_id, source, mode, status, started_at, finished_at, rows_read, last_key, error, definition_hash
+      FROM ingest_runs FINAL
+      WHERE source = {source:String} AND status = 'succeeded'
+      ORDER BY started_at DESC LIMIT 1`,
+    format: 'JSONEachRow',
+    query_params: { source },
+  });
+  const [row] = await result.json<IngestRunRow>();
+  return row ? toRun(row) : null;
+}
+
+/** ClickHouseの日時の文字列（UTC）をDateにする。 */
+export function dateOfClickhouse(text: string): Date {
+  return new Date(`${text.replace(' ', 'T')}Z`);
+}
+
 /** fullの表を最後に読み終えた日時。 */
 export async function lastSucceededFullRunAt(client: ClickHouseClient, source: string): Promise<Date | null> {
   const result = await client.query({
@@ -94,7 +118,7 @@ export async function lastSucceededFullRunAt(client: ClickHouseClient, source: s
   });
   const [row] = await result.json<{ started_at: string; runs: string | number }>();
   if (!row || Number(row.runs) === 0) return null;
-  return new Date(`${row.started_at.replace(' ', 'T')}Z`);
+  return dateOfClickhouse(row.started_at);
 }
 
 export async function latestStartedAt(client: ClickHouseClient): Promise<Date | null> {
@@ -104,5 +128,5 @@ export async function latestStartedAt(client: ClickHouseClient): Promise<Date | 
   });
   const [row] = await result.json<{ started_at: string; runs: string | number }>();
   if (!row || Number(row.runs) === 0) return null;
-  return new Date(`${row.started_at.replace(' ', 'T')}Z`);
+  return dateOfClickhouse(row.started_at);
 }
