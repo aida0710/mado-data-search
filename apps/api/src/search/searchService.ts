@@ -11,6 +11,7 @@ import { sourceUrl, type SourceConfig } from '../sources/sourceConfig.js';
 import { buildSearchCondition } from './searchQuery.js';
 import {
   BOUNDARY_ROWS_PER_RESULT_ROW,
+  VERSIONS_READ_PER_ENTRY,
   boundariesQuery,
   boundaryParameters,
   countQuery,
@@ -116,7 +117,7 @@ export function createSearchService(clickhouse: ClickHouseClient, sources: Sourc
             ...boundaryParameters(boundaries),
             limit: request.limit,
             offset: request.offset,
-            alternativeLimit,
+            alternativeReadLimit: alternativeLimit * VERSIONS_READ_PER_ENTRY,
           },
           clickhouse_settings: searchSettings,
         });

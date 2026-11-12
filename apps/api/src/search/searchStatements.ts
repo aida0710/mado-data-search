@@ -45,22 +45,28 @@ export function boundaryParameters(boundaries: Boundaries): Record<string, strin
 }
 
 /**
+ * 同じ行の、まだマージされていない古い版も上位に並ぶ。古い版を外したあとでページが埋まるよう、条件ごとにこの倍数だけ多く読む。
+ * 条件ごとにLIMIT BYで古い版を外すと、当たった行すべての全部の列を読むことになり遅いので、外すのは合わせたあとにする。
+ */
+export const VERSIONS_READ_PER_ENTRY = 4;
+
+/**
  * 条件ごとに上位の行だけを取り、合わせてから並べ直す。全体の上位は、どれかの条件の上位に必ず入っている。
- * 2つの条件に当たった行と、まだマージされていない同じ行の古い版は、行のキーで1つにする。
+ * 2つの条件に当たった行と、同じ行の古い版は、行のキーで1つにする。
  */
 export function entriesQuery(alternatives: SearchAlternative[], sort: SearchRequest['sort'], boundaries: Boundaries): string {
   const insideBoundary = sort === 'oldest' ? '<=' : '>=';
-  const newestVersionOfEachEntry = `ORDER BY published_at ${sortDirection(sort)}, ${ENTRY_KEY}, ingested_at DESC LIMIT 1 BY ${ENTRY_KEY}`;
+  const newestFirstWithinEntry = `ORDER BY published_at ${sortDirection(sort)}, ${ENTRY_KEY}, ingested_at DESC`;
   const topOfEachAlternative = alternatives
     .map(({ where }, index) => {
       const withinBoundary =
         boundaries[index] === null ? where : `${where} AND published_at ${insideBoundary} {${boundaryParameterName(index)}:DateTime}`;
       return `SELECT * FROM (SELECT ${ENTRY_RESULT_COLUMNS} FROM entries WHERE ${withinBoundary}
-        ${newestVersionOfEachEntry} LIMIT {alternativeLimit:UInt32})`;
+        ${newestFirstWithinEntry} LIMIT {alternativeReadLimit:UInt32})`;
     })
     .join(' UNION ALL ');
   return `SELECT ${ENTRY_RESULT_COLUMNS} FROM (${topOfEachAlternative})
-    ${newestVersionOfEachEntry}
+    ${newestFirstWithinEntry} LIMIT 1 BY ${ENTRY_KEY}
     LIMIT {limit:UInt32} OFFSET {offset:UInt32}`;
 }
 
