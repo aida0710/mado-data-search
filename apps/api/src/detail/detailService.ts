@@ -1,7 +1,7 @@
 /** 詳細を開いたときだけ、MySQLから主キーで1行と関連する行を読む。長い列はClickHouseに写していない。 */
 import type { EntryDetail } from '@mds/contracts';
 import type { Pool, RowDataPacket } from 'mysql2/promise';
-import { sourceUrl, type SourceConfig } from '../sources/sourceConfig.js';
+import { rowFilterClause, sourceUrl, type SourceConfig } from '../sources/sourceConfig.js';
 
 /** 関連する行の上限。多いものでも画面で読める分だけあればよい。 */
 const MAXIMUM_RELATED_ROWS = 200;
@@ -46,7 +46,7 @@ export function createDetailService(pool: Pool, sources: SourceConfig[]) {
         {
           sql: `SELECT ${source.fields.externalId ?? "''"} AS ${EXTERNAL_ID_ALIAS}, ${source.detail.columns.join(', ')}
             FROM \`${source.database}\`.\`${source.table}\` t ${source.detail.join}
-            WHERE t.\`${source.key}\` = ? LIMIT 1`,
+            WHERE t.\`${source.key}\` = ? ${rowFilterClause(source)} LIMIT 1`,
           timeout: DETAIL_QUERY_TIMEOUT_MILLISECONDS,
         },
         [rowKey],

@@ -63,6 +63,8 @@ sources:
     # キーが連番でない表は、新しい行を見分けられないので全件読み直す。
     mode: full
     fullEveryDays: 7
+    # 種類の違う行が同じ表に入っているときは、取り込む行をSQLの式で絞る。keyは、絞ったあとの行で重ならない列にする。
+    where: t.category = 'item'
     fields:
       externalId: t.code
       title: t.name

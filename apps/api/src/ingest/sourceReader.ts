@@ -1,7 +1,7 @@
 /** MySQLの1つの表を、主キーの順に少しずつ読む。 */
 import type { Connection, RowDataPacket } from 'mysql2/promise';
 import { attributeColumn } from '../clickhouse/attributeColumns.js';
-import type { AttributeType, SourceConfig } from '../sources/sourceConfig.js';
+import { rowFilterClause, type AttributeType, type SourceConfig } from '../sources/sourceConfig.js';
 
 /** 項目の名前から型を引く。 */
 export type AttributeTypes = ReadonlyMap<string, AttributeType>;
@@ -57,7 +57,7 @@ function fromClause(source: SourceConfig): string {
 export function buildChunkSql(source: SourceConfig): string {
   return `SELECT ${selectList(source)}
   ${fromClause(source)}
-  WHERE t.\`${source.key}\` > ?
+  WHERE t.\`${source.key}\` > ? ${rowFilterClause(source)}
   ORDER BY t.\`${source.key}\`
   LIMIT ?`;
 }
@@ -66,7 +66,7 @@ export function buildChunkSql(source: SourceConfig): string {
 export function buildRowsByKeySql(source: SourceConfig): string {
   return `SELECT ${selectList(source)}
   ${fromClause(source)}
-  WHERE t.\`${source.key}\` IN (?)`;
+  WHERE t.\`${source.key}\` IN (?) ${rowFilterClause(source)}`;
 }
 
 function textOf(value: unknown): string {

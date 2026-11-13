@@ -12,6 +12,8 @@ export function sourceDefinitionHash(source: SourceConfig, attributes: Attribute
     table: source.table,
     key: source.key,
     join: source.join,
+    // 条件が無いsourceの指紋を変えないよう、あるときだけ入れる。
+    ...(source.where ? { where: source.where } : {}),
     identity: source.identity,
     fields: Object.entries(source.fields).sort(),
     attributes: Object.entries(source.attributes)
