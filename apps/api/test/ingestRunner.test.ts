@@ -81,6 +81,12 @@ describe('行の変換', () => {
     expect(sql).toContain('LEFT JOIN channels c');
   });
 
+  it('行を絞る条件を、順に読むSQLとキーで読むSQLの両方に括弧で付ける', () => {
+    const filtered = { ...source, where: "t.kind = 'item' OR t.kind = 'asset'" };
+    expect(buildChunkSql(filtered)).toContain("t.`id` > ? AND (t.kind = 'item' OR t.kind = 'asset')");
+    expect(buildRowsByKeySql(filtered)).toContain("t.`id` IN (?) AND (t.kind = 'item' OR t.kind = 'asset')");
+  });
+
   it('不明な日付と文字のキーを安全な値にする', () => {
     const row = { row_key: 'BV1abc', external_id: 'BV1abc', title: null, channel_name: 'x', channel_key: '', language: null, duration_seconds: '-3', published_at: '0000-00-00 00:00:00', url: null };
     const entry = toRow(row);
@@ -130,6 +136,12 @@ describe('定義の指紋', () => {
     const before = sourceDefinitionHash(source, catalog.attributes);
     const changed = { ...source, attributes: { ...source.attributes, view_count: 't.views' } };
     expect(sourceDefinitionHash(changed, catalog.attributes)).not.toBe(before);
+  });
+
+  it('行を絞る条件を足すと指紋が変わり、空の条件では変わらない', () => {
+    const before = sourceDefinitionHash(source, catalog.attributes);
+    expect(sourceDefinitionHash({ ...source, where: "t.kind = 'item'" }, catalog.attributes)).not.toBe(before);
+    expect(sourceDefinitionHash({ ...source, where: '' }, catalog.attributes)).toBe(before);
   });
 
   it('読み直す間隔や詳細の画面の設定では変わらない', () => {

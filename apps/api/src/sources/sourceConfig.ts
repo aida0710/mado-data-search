@@ -48,6 +48,8 @@ const sourceSchema = z.object({
   // （古い行があとから変わるが、変わった行をchangedKeysで拾えない表に使う）。
   fullEveryDays: z.number().positive().optional(),
   join: z.string().default(''),
+  // 取り込む行を絞る条件（SQLの式）。種類の違う行が同じ表に入っているときに書く。keyは、絞ったあとの行で重ならない列にする。
+  where: z.string().default(''),
   // 外部のIDが何のIDか（どのサイトの何か）。同じidentityで外部のIDが同じ行は、sourceが違っても同じものとして扱う。
   identity: z.string().regex(/^[a-z0-9-]*$/).default(''),
   fields: z.object({
@@ -115,6 +117,11 @@ const DEFAULT_FULL_EVERY_DAYS = 7;
 /** 全件を読み直す間隔。決まった間隔で読み直さない表はnull。 */
 export function fullEveryDaysOf(source: SourceConfig): number | null {
   return source.fullEveryDays ?? (source.mode === 'full' ? DEFAULT_FULL_EVERY_DAYS : null);
+}
+
+/** 行を絞る条件を、ほかの条件にANDで続ける句。条件が無ければ空。 */
+export function rowFilterClause(source: SourceConfig): string {
+  return source.where ? `AND (${source.where})` : '';
 }
 
 export function sourceUrl(source: SourceConfig, externalId: string, storedUrl: string): string | null {
